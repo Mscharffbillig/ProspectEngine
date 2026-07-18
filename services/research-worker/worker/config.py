@@ -15,7 +15,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+    # Neon pooled connection string (worker uses single-statement autocommit,
+    # which is safe through the transaction-mode pooler).
+    database_url: str = ""
     demo_mode: bool = True
 
     brave_search_api_key: str = ""

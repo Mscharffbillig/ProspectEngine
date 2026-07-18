@@ -1,45 +1,39 @@
+import { and, count, desc, eq, inArray, lte, notInArray, type SQL } from "drizzle-orm";
+import type { PgTable } from "drizzle-orm/pg-core";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import type { ResearchRun } from "@/lib/types";
+import { db } from "@/db";
+import { businesses, followUpTasks, outreachDrafts, researchRuns } from "@/db/schema";
+import type { RunStats } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-async function count(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  table: string,
-  filter: (q: any) => any,
-): Promise<number> {
-  const { count: n } = await filter(supabase.from(table).select("id", { count: "exact", head: true }));
-  return n ?? 0;
+async function countWhere(table: PgTable, where: SQL | undefined): Promise<number> {
+  const [row] = await db().select({ n: count() }).from(table).where(where);
+  return row?.n ?? 0;
 }
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [
-    awaitingReview,
-    qualified,
-    outreachDue,
-    followUpsDue,
-    replies,
-    interviews,
-    totalBusinesses,
-  ] = await Promise.all([
-    count(supabase, "businesses", (q) => q.in("status", ["qualified", "needs_review"])),
-    count(supabase, "businesses", (q) => q.eq("status", "qualified")),
-    count(supabase, "outreach_drafts", (q) => q.eq("status", "draft")),
-    count(supabase, "follow_up_tasks", (q) => q.eq("status", "pending").lte("due_date", today)),
-    count(supabase, "businesses", (q) => q.eq("status", "replied")),
-    count(supabase, "businesses", (q) => q.eq("status", "interview_scheduled")),
-    count(supabase, "businesses", (q) => q.not("status", "in", '("rejected","do_not_contact")')),
-  ]);
+  const [awaitingReview, qualified, outreachDue, followUpsDue, replies, interviews, total] =
+    await Promise.all([
+      countWhere(businesses, inArray(businesses.status, ["qualified", "needs_review"])),
+      countWhere(businesses, eq(businesses.status, "qualified")),
+      countWhere(outreachDrafts, eq(outreachDrafts.status, "draft")),
+      countWhere(
+        followUpTasks,
+        and(eq(followUpTasks.status, "pending"), lte(followUpTasks.dueDate, today)),
+      ),
+      countWhere(businesses, eq(businesses.status, "replied")),
+      countWhere(businesses, eq(businesses.status, "interview_scheduled")),
+      countWhere(businesses, notInArray(businesses.status, ["rejected", "do_not_contact"])),
+    ]);
 
-  const { data: runs } = await supabase
-    .from("research_runs")
-    .select("*, campaigns(name)")
-    .order("started_at", { ascending: false })
-    .limit(5);
+  const runs = await db().query.researchRuns.findMany({
+    with: { campaign: { columns: { name: true } } },
+    orderBy: desc(researchRuns.startedAt),
+    limit: 5,
+  });
 
   const stats: [string, number, string][] = [
     ["Awaiting review", awaitingReview, "/review"],
@@ -64,7 +58,7 @@ export default async function DashboardPage() {
 
       <section className="card">
         <h2 className="mb-2 font-medium">Recent research runs</h2>
-        {runs && runs.length > 0 ? (
+        {runs.length > 0 ? (
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-gray-500">
@@ -75,20 +69,23 @@ export default async function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {(runs as (ResearchRun & { campaigns: { name: string } | null })[]).map((run) => (
-                <tr key={run.id} className="border-t border-gray-100">
-                  <td className="py-1.5 pr-4">{run.campaigns?.name ?? "—"}</td>
-                  <td className="py-1.5 pr-4">{new Date(run.started_at).toLocaleString()}</td>
-                  <td className="py-1.5 pr-4">{run.status}</td>
-                  <td className="py-1.5 text-gray-600">
-                    {run.error
-                      ? run.error
-                      : `${run.stats?.new_businesses ?? 0} new, ${run.stats?.merged ?? 0} merged, ${
-                          run.stats?.raw_results ?? 0
-                        } raw results`}
-                  </td>
-                </tr>
-              ))}
+              {runs.map((run) => {
+                const s = (run.stats ?? {}) as RunStats;
+                return (
+                  <tr key={run.id} className="border-t border-gray-100">
+                    <td className="py-1.5 pr-4">{run.campaign?.name ?? "—"}</td>
+                    <td className="py-1.5 pr-4">{run.startedAt.toLocaleString()}</td>
+                    <td className="py-1.5 pr-4">{run.status}</td>
+                    <td className="py-1.5 text-gray-600">
+                      {run.error
+                        ? run.error
+                        : `${s.new_businesses ?? 0} new, ${s.merged ?? 0} merged, ${
+                            s.raw_results ?? 0
+                          } raw results`}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ) : (
@@ -98,9 +95,7 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      <p className="text-sm text-gray-500">
-        {totalBusinesses} active businesses tracked across all campaigns.
-      </p>
+      <p className="text-sm text-gray-500">{total} active businesses tracked across all campaigns.</p>
     </div>
   );
 }

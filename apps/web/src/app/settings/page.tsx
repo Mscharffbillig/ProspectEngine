@@ -1,5 +1,6 @@
-import { createClient } from "@/lib/supabase/server";
-import type { QualificationRule } from "@/lib/types";
+import { desc } from "drizzle-orm";
+import { db } from "@/db";
+import { qualificationRules, workerHeartbeats } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +20,16 @@ function Status({ configured, label }: { configured: boolean; label: string }) {
 }
 
 export default async function SettingsPage() {
-  const supabase = await createClient();
-  const [{ data: heartbeats }, { data: rules }] = await Promise.all([
-    supabase.from("worker_heartbeats").select("*").order("last_seen_at", { ascending: false }),
-    supabase.from("qualification_rules").select("*").order("points", { ascending: false }),
+  const [heartbeats, rules] = await Promise.all([
+    db().query.workerHeartbeats.findMany({ orderBy: desc(workerHeartbeats.lastSeenAt) }),
+    db().query.qualificationRules.findMany({ orderBy: desc(qualificationRules.points) }),
   ]);
 
   // Presence checks only — secret values never reach the browser.
+  const neonConfigured = Boolean(process.env.DATABASE_URL);
+  const neonAuthConfigured = Boolean(
+    process.env.NEXT_PUBLIC_STACK_PROJECT_ID && process.env.STACK_SECRET_SERVER_KEY,
+  );
   const braveConfigured = Boolean(process.env.BRAVE_SEARCH_API_KEY);
   const hunterConfigured = Boolean(process.env.HUNTER_API_KEY);
   const aiConfigured = Boolean(
@@ -42,6 +46,8 @@ export default async function SettingsPage() {
       <section className="card text-sm">
         <h2 className="mb-2 font-medium">Providers</h2>
         <ul className="divide-y divide-gray-100">
+          <Status configured={neonConfigured} label="Neon Postgres (DATABASE_URL)" />
+          <Status configured={neonAuthConfigured} label="Neon Auth (Stack)" />
           <Status configured={braveConfigured} label="Brave Search API" />
           <Status configured={hunterConfigured} label="Hunter email enrichment (optional)" />
           <Status configured={aiConfigured} label="AI provider (optional)" />
@@ -56,7 +62,7 @@ export default async function SettingsPage() {
 
       <section className="card text-sm">
         <h2 className="mb-2 font-medium">Worker status</h2>
-        {(heartbeats ?? []).length === 0 && (
+        {heartbeats.length === 0 && (
           <p className="text-gray-500">
             No worker has checked in yet. Start it with{" "}
             <code className="rounded bg-gray-100 px-1">python -m worker.main poll</code> in
@@ -64,15 +70,15 @@ export default async function SettingsPage() {
           </p>
         )}
         <ul className="space-y-1">
-          {(heartbeats ?? []).map((h) => {
-            const lastSeen = new Date(h.last_seen_at);
-            const alive = Date.now() - lastSeen.getTime() < staleMs;
+          {heartbeats.map((h) => {
+            const info = (h.info ?? {}) as { mode?: string; demo_mode?: boolean };
+            const alive = Date.now() - h.lastSeenAt.getTime() < staleMs;
             return (
               <li key={h.id} className="flex items-center justify-between">
                 <span>
                   {h.id}{" "}
                   <span className="text-xs text-gray-400">
-                    (mode: {h.info?.mode ?? "?"}, demo: {String(h.info?.demo_mode ?? "?")})
+                    (mode: {info.mode ?? "?"}, demo: {String(info.demo_mode ?? "?")})
                   </span>
                 </span>
                 <span
@@ -80,7 +86,7 @@ export default async function SettingsPage() {
                     alive ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
                   }`}
                 >
-                  {alive ? "online" : `last seen ${lastSeen.toLocaleString()}`}
+                  {alive ? "online" : `last seen ${h.lastSeenAt.toLocaleString()}`}
                 </span>
               </li>
             );
@@ -100,8 +106,8 @@ export default async function SettingsPage() {
       <section className="card text-sm">
         <h2 className="mb-2 font-medium">Scoring rules</h2>
         <p className="mb-2 text-gray-500">
-          Edit points or disable rules directly in the qualification_rules table (Supabase Studio);
-          changes apply to the next scoring run.
+          Edit points or disable rules directly in the qualification_rules table (Neon Console SQL
+          editor or any Postgres client); changes apply to the next scoring run.
         </p>
         <table className="w-full">
           <thead>
@@ -112,7 +118,7 @@ export default async function SettingsPage() {
             </tr>
           </thead>
           <tbody>
-            {((rules ?? []) as QualificationRule[]).map((r) => (
+            {rules.map((r) => (
               <tr key={r.id} className="border-t border-gray-100">
                 <td className="py-1.5 pr-3">{r.label}</td>
                 <td

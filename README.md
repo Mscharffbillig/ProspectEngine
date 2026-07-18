@@ -1,4 +1,4 @@
-# Lead Generator
+# ProspectEngine
 
 Internal lead-discovery and customer-research tool for a solo software consultant.
 It automates business discovery, website research, evidence-backed qualification,
@@ -11,19 +11,31 @@ source URL, supporting excerpt, and confidence label.
 ## Repository structure
 
 ```text
-apps/web                  Next.js 15 + TypeScript + Tailwind web app (Supabase auth)
+apps/web                  Next.js 15 + TypeScript + Tailwind web app (Neon Auth, Drizzle ORM)
+apps/web/src/db/schema.ts Drizzle schema — source of truth for the database
+apps/web/drizzle/         Generated SQL migrations (committed; applied with drizzle-kit)
 services/research-worker  Python 3.11+ background worker (discovery, crawl, extract, score, draft)
-supabase/migrations       SQL schema (run with the Supabase CLI)
-supabase/seed.sql         Scoring rules + example "Minnesota Trade Businesses" campaign
 fixtures/                 Demo search results, demo business websites, sample CSV
 docs/                     EC2 deployment guide
 ```
+
+## Stack
+
+- **Database**: Neon Postgres. The web app talks to it through **Drizzle ORM**
+  (`@neondatabase/serverless` HTTP driver, pooled connection string); the Python
+  worker connects with psycopg using the same pooled string (single-statement
+  autocommit, safe through the transaction-mode pooler). Migrations use the
+  **direct** connection string.
+- **Auth**: **Neon Auth** (Stack). Single-user MVP; sign-in pages are served at
+  `/handler/*`. If the STACK env vars are absent the app runs open with a
+  warning banner so local demo work needs zero external accounts.
+- **Worker queue**: plain Postgres (`FOR UPDATE SKIP LOCKED`) — unchanged.
 
 ## How it works
 
 1. Create a campaign (industries, locations, filters, minimum score).
 2. Click **Run discovery** — this queues a task in Postgres.
-3. The Python worker claims tasks (`FOR UPDATE SKIP LOCKED`), runs the pipeline:
+3. The Python worker claims tasks and runs the pipeline:
    `discover_candidates → research_website → extract_facts → score_business → generate_hypotheses`.
 4. Discovery uses the Brave Search API (or local fixtures in demo mode), filters
    directory/aggregator sites, normalizes candidates, and merges duplicates by
@@ -40,25 +52,37 @@ docs/                     EC2 deployment guide
    follow-up reminders at 4 and 10 days; replies stop reminders; opt-outs go on a
    permanent suppression list that discovery also checks.
 
-## Local setup
+## Neon setup
 
-Prerequisites: Node 20+, Python 3.11+, Docker (for local Supabase),
-[Supabase CLI](https://supabase.com/docs/guides/cli).
+1. Create a Neon project named **ProspectEngine** (console or
+   `npx neonctl projects create --name ProspectEngine`).
+2. From the project dashboard copy **both** connection strings into `.env`
+   (see `.env.example`):
+   - `DATABASE_URL` — pooled (host contains `-pooler`)
+   - `DIRECT_DATABASE_URL` — direct
+3. Enable **Neon Auth** on the project (Console → Auth) and copy
+   `NEXT_PUBLIC_STACK_PROJECT_ID`, `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`,
+   and `STACK_SECRET_SERVER_KEY` into `.env`.
+4. Apply migrations and seed:
 
 ```bash
-# 1. Environment
-cp .env.example .env          # defaults work for local demo mode
+cd apps/web
+npm install
+npm run db:migrate     # applies apps/web/drizzle/*.sql via the direct URL
+npm run db:seed        # scoring rules + example campaign (idempotent)
+```
 
-# 2. Database (local Supabase; runs migrations + seed automatically)
-supabase start                # from the repo root
-supabase db reset             # applies supabase/migrations + supabase/seed.sql
+## Local development
 
-# 3. Web app
+```bash
+cp .env.example .env          # then fill in the Neon values above
+
+# Web app
 cd apps/web
 npm install
 npm run dev                   # http://localhost:3000
 
-# 4. Worker (separate terminal)
+# Worker (separate terminal)
 cd services/research-worker
 python -m venv .venv
 .venv/Scripts/activate        # Windows;  source .venv/bin/activate on Linux/macOS
@@ -66,18 +90,16 @@ pip install -e ".[dev]"
 python -m worker.main poll    # or `once` to drain the queue and exit
 ```
 
-After `supabase start`, copy the printed `anon key` / `service_role key` into
-`.env` (`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) and set
-`NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321` and
-`DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres`.
 The web app falls back to the repo-root `.env` automatically (see
-`apps/web/next.config.ts`), so one env file serves both the web app and worker.
+`apps/web/next.config.ts` and `drizzle.config.ts`), so one env file serves the
+web app, migrations, and worker.
 
-Then open http://localhost:3000, **sign up** (first account becomes the primary
-user), open the seeded *Minnesota Trade Businesses* campaign, and click
-**Run discovery**. With `DEMO_MODE=true` (the default) the worker uses fixture
-search results and fixture websites — no paid credentials needed. Within a few
-seconds the review queue fills with scored, evidence-backed demo leads.
+Open http://localhost:3000, sign in through Neon Auth (or use the open
+no-auth mode if you haven't configured it yet), open the seeded *Minnesota
+Trade Businesses* campaign, and click **Run discovery**. With `DEMO_MODE=true`
+(the default) the worker uses fixture search results and fixture websites — no
+paid credentials needed. Within a few seconds the review queue fills with
+scored, evidence-backed demo leads.
 
 ## Demo walkthrough (no paid APIs)
 
@@ -99,14 +121,31 @@ See `.env.example`. Highlights:
 
 | Variable | Purpose |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Web app → Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-side only; never sent to the browser |
-| `DATABASE_URL` | Worker → Postgres direct connection |
+| `DATABASE_URL` | Neon **pooled** connection string (web app + worker) |
+| `DIRECT_DATABASE_URL` | Neon **direct** connection string (migrations only) |
+| `NEXT_PUBLIC_STACK_PROJECT_ID` / `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` | Neon Auth (browser-safe) |
+| `STACK_SECRET_SERVER_KEY` | Neon Auth server key — never sent to the browser |
 | `BRAVE_SEARCH_API_KEY` | Live discovery (optional; demo mode works without) |
 | `HUNTER_API_KEY` | Optional email enrichment (Phase 2 adapter) |
 | `AI_PROVIDER` / `ANTHROPIC_API_KEY` / `AI_MODEL` | Optional AI analysis (Phase 2) |
 | `CRAWLER_USER_AGENT` / `CRAWLER_CONTACT_EMAIL` | Crawler identity sent to websites |
 | `DEMO_MODE` | `true` = fixture search + fixture websites |
+
+## Migrations
+
+`apps/web/src/db/schema.ts` is the source of truth. Workflow:
+
+```bash
+cd apps/web
+# edit src/db/schema.ts, then:
+npm run db:generate    # writes a new SQL file into apps/web/drizzle/
+npm run db:migrate     # applies pending migrations (direct URL)
+```
+
+Generated SQL is committed, so GitHub remains the source of truth. The
+`0001_updated_at_triggers.sql` migration is hand-written (drizzle-kit
+`--custom`) because the Python worker writes rows without going through
+Drizzle and still needs `updated_at` maintained.
 
 ## Testing & linting
 
@@ -124,59 +163,52 @@ npm run lint
 npm run build        # includes strict type-checking
 ```
 
-## Migrations
-
-Migrations live in `supabase/migrations` and are applied with
-`supabase db reset` (local) or `supabase db push` (hosted project). The schema
-covers campaigns, businesses, sources, contacts, website pages, extracted facts,
-qualification rules/runs/evidence, pain hypotheses, outreach drafts/events,
-follow-ups, suppression list, research tasks/runs, and import jobs. RLS is
-enabled on every table (single-org policy: any authenticated user).
-
 ## Deployment
 
 See [docs/DEPLOYMENT_EC2.md](docs/DEPLOYMENT_EC2.md) for running the worker on
-Ubuntu EC2 (systemd service or cron) against a hosted Supabase project, and
-options for hosting the web app.
+Ubuntu EC2 (systemd service or cron) against Neon, and options for hosting the
+web app.
 
 ## Accounts you must create manually
 
-- **Supabase project** (free tier fine) — for hosted use; local Docker works for demo.
+- **Neon project** (free tier fine) — database + Neon Auth.
 - **Brave Search API key** (free tier: 2,000 queries/mo) — for live discovery.
 - **Hunter.io** (optional) — email enrichment, Phase 2.
 - **Anthropic API key** (optional) — AI summaries/drafts, Phase 2.
 
 ## Assumptions made
 
-- **Single org, single user.** RLS grants full access to any authenticated user;
-  the schema keeps UUID keys everywhere so tenant separation can be added later
-  (add `org_id` + new policies, no structural rewrite).
-- **The worker connects straight to Postgres** (`DATABASE_URL`) and bypasses RLS;
-  it runs only in trusted environments.
+- **Single org, single user.** Any signed-in Neon Auth user has full access
+  (there is exactly one). Access control is enforced at the application
+  boundary (auth middleware); the schema keeps UUID keys everywhere so tenant
+  separation can be added later without a structural rewrite.
+- **The worker connects straight to Postgres** and runs only in trusted
+  environments.
+- **No auth configured ⇒ app runs open** with a visible warning banner. This
+  keeps the zero-credential demo path working; don't expose an unconfigured
+  instance to the internet.
 - **Draft generation is a worker task** (like scoring), so drafting logic lives in
   exactly one place; the UI shows drafts once the worker processes the queue.
 - **Fixture domains use `.example.com` hosts** that are never fetched live; demo
   mode swaps in a filesystem fetcher.
 - **Python 3.11+** (developed and tested on 3.14; no 3.11-only features used).
-- **Local Supabase (free, Docker) counts as "no paid credentials"** for demo mode.
 - **Campaign keyword/characteristic fields** are stored and shown to the operator
   now; only industries/locations/max-candidates/min-score drive automation in
   Phase 1 (keywords influence AI analysis in Phase 2).
 
 ## Known limitations
 
+- Migrations have not yet been executed against a live Neon database from this
+  machine (Neon CLI auth pending); run `npm run db:migrate && npm run db:seed`
+  once your Neon project exists.
 - OSM Overpass adapter, Hunter enrichment, and AI provider integration are
   Phase 2 (interfaces exist; adapters not yet implemented).
-- Scheduled/recurring campaign runs are manual-trigger only (cron the worker +
-  a small SQL insert, or wait for Phase 2 scheduler).
+- Scheduled/recurring campaign runs are manual-trigger only.
 - Search-result company names are parsed from result titles; odd titles can
-  produce awkward names (editable on the business page via notes; full inline
-  editing is Phase 3).
-- Scoring-rule editing happens in Supabase Studio, not the settings UI.
+  produce awkward names.
+- Scoring-rule editing happens via SQL (Neon Console), not the settings UI.
 - The crawler does not render JavaScript (by design); JS-only sites record a
   research failure rather than being browsed with automation.
-- No task-queue integration test against a live Postgres yet (lock logic is
-  unit-tested; the SQL uses standard `FOR UPDATE SKIP LOCKED`).
 
 ## Recommended next steps (Phase 2)
 

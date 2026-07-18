@@ -1,15 +1,12 @@
+import { desc } from "drizzle-orm";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import type { Campaign } from "@/lib/types";
+import { db } from "@/db";
+import { campaigns } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
 export default async function CampaignsPage() {
-  const supabase = await createClient();
-  const { data: campaigns, error } = await supabase
-    .from("campaigns")
-    .select("*")
-    .order("created_at", { ascending: false });
+  const rows = await db().query.campaigns.findMany({ orderBy: desc(campaigns.createdAt) });
 
   return (
     <div className="space-y-4">
@@ -19,11 +16,6 @@ export default async function CampaignsPage() {
           New campaign
         </Link>
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error.message}
-        </p>
-      )}
       <div className="card p-0">
         <table className="w-full text-sm">
           <thead>
@@ -35,7 +27,7 @@ export default async function CampaignsPage() {
             </tr>
           </thead>
           <tbody>
-            {((campaigns ?? []) as Campaign[]).map((c) => (
+            {rows.map((c) => (
               <tr key={c.id} className="border-b border-gray-100 last:border-0">
                 <td className="p-3">
                   <Link href={`/campaigns/${c.id}`} className="font-medium hover:underline">
@@ -43,13 +35,11 @@ export default async function CampaignsPage() {
                   </Link>
                 </td>
                 <td className="p-3">{c.status}</td>
-                <td className="p-3">{c.min_qualification_score}</td>
-                <td className="p-3">
-                  {c.last_run_at ? new Date(c.last_run_at).toLocaleString() : "never"}
-                </td>
+                <td className="p-3">{c.minQualificationScore}</td>
+                <td className="p-3">{c.lastRunAt ? c.lastRunAt.toLocaleString() : "never"}</td>
               </tr>
             ))}
-            {campaigns?.length === 0 && (
+            {rows.length === 0 && (
               <tr>
                 <td colSpan={4} className="p-4 text-gray-500">
                   No campaigns yet.

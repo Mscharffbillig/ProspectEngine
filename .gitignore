@@ -20,10 +20,6 @@ dist/
 .env.local
 .env*.local
 
-# Supabase
-supabase/.temp/
-supabase/.branches/
-
 # OS / editor
 .DS_Store
 Thumbs.db

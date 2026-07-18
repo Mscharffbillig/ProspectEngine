@@ -1,7 +1,9 @@
 "use server";
 
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { db } from "@/db";
+import { businesses, followUpTasks, researchTasks } from "@/db/schema";
 
 function revalidateLeadPages(businessId: string) {
   revalidatePath("/review");
@@ -11,103 +13,81 @@ function revalidateLeadPages(businessId: string) {
 }
 
 export async function approveLead(businessId: string): Promise<void> {
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("businesses")
-    .update({ status: "approved", last_action_at: new Date().toISOString() })
-    .eq("id", businessId);
-  if (error) throw new Error(error.message);
+  await db()
+    .update(businesses)
+    .set({ status: "approved", lastActionAt: new Date() })
+    .where(eq(businesses.id, businessId));
   // Approval immediately queues an outreach draft so the lead is actionable.
-  await supabase.from("research_tasks").insert({
-    task_type: "generate_outreach_draft",
-    business_id: businessId,
+  await db().insert(researchTasks).values({
+    taskType: "generate_outreach_draft",
+    businessId,
   });
   revalidateLeadPages(businessId);
 }
 
 export async function rejectLead(businessId: string, reason: string): Promise<void> {
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("businesses")
-    .update({
-      status: "rejected",
-      rejection_reason: reason,
-      last_action_at: new Date().toISOString(),
-    })
-    .eq("id", businessId);
-  if (error) throw new Error(error.message);
-  await cancelFollowUps(supabase, businessId);
+  await db()
+    .update(businesses)
+    .set({ status: "rejected", rejectionReason: reason, lastActionAt: new Date() })
+    .where(eq(businesses.id, businessId));
+  await cancelFollowUps(businessId);
   revalidateLeadPages(businessId);
 }
 
 export async function snoozeLead(businessId: string, days: number): Promise<void> {
-  const supabase = await createClient();
   const until = new Date();
   until.setDate(until.getDate() + days);
-  const { error } = await supabase
-    .from("businesses")
-    .update({
+  await db()
+    .update(businesses)
+    .set({
       status: "snoozed",
-      snoozed_until: until.toISOString(),
-      next_action_at: until.toISOString(),
-      last_action_at: new Date().toISOString(),
+      snoozedUntil: until,
+      nextActionAt: until,
+      lastActionAt: new Date(),
     })
-    .eq("id", businessId);
-  if (error) throw new Error(error.message);
+    .where(eq(businesses.id, businessId));
   revalidateLeadPages(businessId);
 }
 
 export async function setLeadStatus(businessId: string, status: string): Promise<void> {
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("businesses")
-    .update({ status, last_action_at: new Date().toISOString() })
-    .eq("id", businessId);
-  if (error) throw new Error(error.message);
+  await db()
+    .update(businesses)
+    .set({ status, lastActionAt: new Date() })
+    .where(eq(businesses.id, businessId));
   if (["lost", "do_not_contact"].includes(status)) {
-    await cancelFollowUps(supabase, businessId);
+    await cancelFollowUps(businessId);
   }
   revalidateLeadPages(businessId);
 }
 
 export async function saveLeadNotes(businessId: string, formData: FormData): Promise<void> {
   const notes = formData.get("notes");
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("businesses")
-    .update({ notes: typeof notes === "string" ? notes : null })
-    .eq("id", businessId);
-  if (error) throw new Error(error.message);
+  await db()
+    .update(businesses)
+    .set({ notes: typeof notes === "string" ? notes : null })
+    .where(eq(businesses.id, businessId));
   revalidateLeadPages(businessId);
 }
 
 export async function requestDraft(businessId: string): Promise<void> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("research_tasks").insert({
-    task_type: "generate_outreach_draft",
-    business_id: businessId,
+  await db().insert(researchTasks).values({
+    taskType: "generate_outreach_draft",
+    businessId,
   });
-  if (error) throw new Error(error.message);
   revalidateLeadPages(businessId);
 }
 
 export async function requestResearch(businessId: string): Promise<void> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("research_tasks").insert({
-    task_type: "research_website",
-    business_id: businessId,
+  await db().insert(researchTasks).values({
+    taskType: "research_website",
+    businessId,
   });
-  if (error) throw new Error(error.message);
   revalidateLeadPages(businessId);
 }
 
-async function cancelFollowUps(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  businessId: string,
-) {
-  await supabase
-    .from("follow_up_tasks")
-    .update({ status: "cancelled" })
-    .eq("business_id", businessId)
-    .eq("status", "pending");
+async function cancelFollowUps(businessId: string): Promise<void> {
+  await db()
+    .update(followUpTasks)
+    .set({ status: "cancelled" })
+    .where(and(eq(followUpTasks.businessId, businessId), eq(followUpTasks.status, "pending")));
 }

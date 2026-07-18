@@ -1,8 +1,16 @@
 "use server";
 
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { db } from "@/db";
+import {
+  campaignIndustries,
+  campaignLocations,
+  campaigns,
+  researchRuns,
+  researchTasks,
+} from "@/db/schema";
 import { campaignSchema, toList } from "@/lib/schemas";
 
 function parseCampaignForm(formData: FormData) {
@@ -30,34 +38,33 @@ function campaignColumns(input: ReturnType<typeof campaignSchema.parse>) {
   return {
     name: input.name,
     description: input.description || null,
-    min_company_size: input.min_company_size,
-    max_company_size: input.max_company_size,
-    include_keywords: input.include_keywords,
-    exclude_keywords: input.exclude_keywords,
-    preferred_characteristics: input.preferred_characteristics,
-    excluded_characteristics: input.excluded_characteristics,
-    workflow_problems: input.workflow_problems,
+    minCompanySize: input.min_company_size ?? null,
+    maxCompanySize: input.max_company_size ?? null,
+    includeKeywords: input.include_keywords,
+    excludeKeywords: input.exclude_keywords,
+    preferredCharacteristics: input.preferred_characteristics,
+    excludedCharacteristics: input.excluded_characteristics,
+    workflowProblems: input.workflow_problems,
     geography: input.geography || null,
-    max_candidates_per_run: input.max_candidates_per_run,
-    min_qualification_score: input.min_qualification_score,
-    ai_enabled: input.ai_enabled,
+    maxCandidatesPerRun: input.max_candidates_per_run,
+    minQualificationScore: input.min_qualification_score,
+    aiEnabled: input.ai_enabled,
     status: input.status,
   };
 }
 
-async function syncListTable(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  table: "campaign_industries" | "campaign_locations",
-  column: "industry" | "location",
-  campaignId: string,
-  values: string[],
-) {
-  await supabase.from(table).delete().eq("campaign_id", campaignId);
-  if (values.length > 0) {
-    const { error } = await supabase
-      .from(table)
-      .insert(values.map((v) => ({ campaign_id: campaignId, [column]: v })));
-    if (error) throw new Error(`Failed to save ${column} list: ${error.message}`);
+async function syncListTables(campaignId: string, industries: string[], locations: string[]) {
+  await db().delete(campaignIndustries).where(eq(campaignIndustries.campaignId, campaignId));
+  await db().delete(campaignLocations).where(eq(campaignLocations.campaignId, campaignId));
+  if (industries.length > 0) {
+    await db()
+      .insert(campaignIndustries)
+      .values(industries.map((industry) => ({ campaignId, industry })));
+  }
+  if (locations.length > 0) {
+    await db()
+      .insert(campaignLocations)
+      .values(locations.map((location) => ({ campaignId, location })));
   }
 }
 
@@ -69,19 +76,20 @@ export async function createCampaign(
   if (!parsed.success) {
     return { error: parsed.error.errors.map((e) => e.message).join("; ") };
   }
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("campaigns")
-    .insert(campaignColumns(parsed.data))
-    .select("id")
-    .single();
-  if (error || !data) return { error: error?.message ?? "Insert failed" };
-
-  await syncListTable(supabase, "campaign_industries", "industry", data.id, parsed.data.industries);
-  await syncListTable(supabase, "campaign_locations", "location", data.id, parsed.data.locations);
-
+  let campaignId: string;
+  try {
+    const [row] = await db()
+      .insert(campaigns)
+      .values(campaignColumns(parsed.data))
+      .returning({ id: campaigns.id });
+    if (!row) return { error: "Insert failed" };
+    campaignId = row.id;
+    await syncListTables(campaignId, parsed.data.industries, parsed.data.locations);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Insert failed" };
+  }
   revalidatePath("/campaigns");
-  redirect(`/campaigns/${data.id}`);
+  redirect(`/campaigns/${campaignId}`);
 }
 
 export async function updateCampaign(
@@ -93,42 +101,31 @@ export async function updateCampaign(
   if (!parsed.success) {
     return { error: parsed.error.errors.map((e) => e.message).join("; ") };
   }
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("campaigns")
-    .update(campaignColumns(parsed.data))
-    .eq("id", campaignId);
-  if (error) return { error: error.message };
-
-  await syncListTable(
-    supabase,
-    "campaign_industries",
-    "industry",
-    campaignId,
-    parsed.data.industries,
-  );
-  await syncListTable(supabase, "campaign_locations", "location", campaignId, parsed.data.locations);
-
+  try {
+    await db()
+      .update(campaigns)
+      .set(campaignColumns(parsed.data))
+      .where(eq(campaigns.id, campaignId));
+    await syncListTables(campaignId, parsed.data.industries, parsed.data.locations);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Update failed" };
+  }
   revalidatePath(`/campaigns/${campaignId}`);
   return { ok: true };
 }
 
 export async function runCampaign(campaignId: string): Promise<void> {
-  const supabase = await createClient();
-  const { data: run, error: runError } = await supabase
-    .from("research_runs")
-    .insert({ campaign_id: campaignId })
-    .select("id")
-    .single();
-  if (runError || !run) throw new Error(runError?.message ?? "Could not create research run");
-
-  const { error } = await supabase.from("research_tasks").insert({
-    task_type: "discover_candidates",
-    campaign_id: campaignId,
+  const [run] = await db()
+    .insert(researchRuns)
+    .values({ campaignId })
+    .returning({ id: researchRuns.id });
+  if (!run) throw new Error("Could not create research run");
+  await db().insert(researchTasks).values({
+    taskType: "discover_candidates",
+    campaignId,
     priority: 10,
     payload: { research_run_id: run.id },
   });
-  if (error) throw new Error(error.message);
   revalidatePath(`/campaigns/${campaignId}`);
 }
 
@@ -136,9 +133,7 @@ export async function setCampaignStatus(
   campaignId: string,
   status: "active" | "paused" | "archived",
 ): Promise<void> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("campaigns").update({ status }).eq("id", campaignId);
-  if (error) throw new Error(error.message);
+  await db().update(campaigns).set({ status }).where(eq(campaigns.id, campaignId));
   revalidatePath("/campaigns");
   revalidatePath(`/campaigns/${campaignId}`);
 }

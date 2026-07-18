@@ -37,11 +37,11 @@ export function DraftCard({ draft, businessName }: Props) {
   return (
     <article className="card space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Link href={`/businesses/${draft.business_id}`} className="font-semibold hover:underline">
+        <Link href={`/businesses/${draft.businessId}`} className="font-semibold hover:underline">
           {businessName}
         </Link>
         <span className="text-xs text-gray-500">
-          {draft.status} · {draft.method} · {new Date(draft.created_at).toLocaleString()}
+          {draft.status} · {draft.method} · {new Date(draft.createdAt).toLocaleString()}
         </span>
       </div>
       {draft.subject && <div className="text-sm font-medium">Subject: {draft.subject}</div>}
@@ -73,7 +73,7 @@ export function DraftCard({ draft, businessName }: Props) {
             type="button"
             disabled={pending}
             className="btn-primary"
-            onClick={() => run(() => markDraftSent(draft.id, draft.business_id, channel))}
+            onClick={() => run(() => markDraftSent(draft.id, draft.businessId, channel))}
           >
             Mark as sent
           </button>
@@ -81,7 +81,7 @@ export function DraftCard({ draft, businessName }: Props) {
             type="button"
             disabled={pending}
             className="btn-secondary"
-            onClick={() => run(() => discardDraft(draft.id, draft.business_id))}
+            onClick={() => run(() => discardDraft(draft.id, draft.businessId))}
           >
             Discard
           </button>
@@ -100,7 +100,7 @@ export function DraftCard({ draft, businessName }: Props) {
             type="button"
             disabled={pending}
             className="btn-primary"
-            onClick={() => run(() => recordReply(draft.business_id, replyNotes))}
+            onClick={() => run(() => recordReply(draft.businessId, replyNotes))}
           >
             Record reply
           </button>
@@ -108,7 +108,7 @@ export function DraftCard({ draft, businessName }: Props) {
             type="button"
             disabled={pending}
             className="btn-danger"
-            onClick={() => run(() => recordOptOut(draft.business_id))}
+            onClick={() => run(() => recordOptOut(draft.businessId))}
           >
             Opt-out / do not contact
           </button>

@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { db } from "@/db";
+import { campaigns, importJobs, researchTasks } from "@/db/schema";
 import { csvRowSchema, type CsvRow } from "@/lib/schemas";
 
 export interface ImportCommitResult {
@@ -9,6 +10,10 @@ export interface ImportCommitResult {
   jobId?: string;
   accepted?: number;
   rejected?: { row: number; error: string }[];
+}
+
+export async function listCampaignOptions(): Promise<{ id: string; name: string }[]> {
+  return db().select({ id: campaigns.id, name: campaigns.name }).from(campaigns);
 }
 
 /**
@@ -32,27 +37,27 @@ export async function commitImport(
   });
   if (accepted.length === 0) return { error: "No valid rows", rejected };
 
-  const supabase = await createClient();
-  const { data: job, error } = await supabase
-    .from("import_jobs")
-    .insert({
-      campaign_id: campaignId,
-      filename,
-      row_count: accepted.length,
-      rows: accepted,
-      errors: rejected,
-    })
-    .select("id")
-    .single();
-  if (error || !job) return { error: error?.message ?? "Could not create import job" };
+  try {
+    const [job] = await db()
+      .insert(importJobs)
+      .values({
+        campaignId,
+        filename,
+        rowCount: accepted.length,
+        rows: accepted,
+        errors: rejected,
+      })
+      .returning({ id: importJobs.id });
+    if (!job) return { error: "Could not create import job" };
 
-  const { error: taskError } = await supabase.from("research_tasks").insert({
-    task_type: "process_csv_import",
-    campaign_id: campaignId,
-    payload: { import_job_id: job.id },
-  });
-  if (taskError) return { error: taskError.message };
-
-  revalidatePath("/import");
-  return { jobId: job.id, accepted: accepted.length, rejected };
+    await db().insert(researchTasks).values({
+      taskType: "process_csv_import",
+      campaignId,
+      payload: { import_job_id: job.id },
+    });
+    revalidatePath("/import");
+    return { jobId: job.id, accepted: accepted.length, rejected };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Import failed" };
+  }
 }

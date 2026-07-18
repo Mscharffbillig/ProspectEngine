@@ -14,6 +14,8 @@ log = logging.getLogger(__name__)
 
 
 def connect() -> psycopg.Connection:
+    if not settings.database_url:
+        raise RuntimeError("DATABASE_URL is not set (see .env.example)")
     return psycopg.connect(settings.database_url, row_factory=dict_row, autocommit=True)
 
 

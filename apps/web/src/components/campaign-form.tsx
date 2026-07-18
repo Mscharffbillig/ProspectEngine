@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useActionState } from "react";
 import type { Campaign } from "@/lib/types";
@@ -80,7 +80,7 @@ export function CampaignForm({ action, campaign, industries, locations, submitLa
             type="number"
             min={0}
             className="field"
-            defaultValue={campaign?.min_company_size ?? ""}
+            defaultValue={campaign?.minCompanySize ?? ""}
           />
         </div>
         <div>
@@ -93,7 +93,7 @@ export function CampaignForm({ action, campaign, industries, locations, submitLa
             type="number"
             min={0}
             className="field"
-            defaultValue={campaign?.max_company_size ?? ""}
+            defaultValue={campaign?.maxCompanySize ?? ""}
           />
         </div>
       </div>
@@ -107,7 +107,7 @@ export function CampaignForm({ action, campaign, industries, locations, submitLa
             name="include_keywords"
             rows={3}
             className="field"
-            defaultValue={listValue(campaign?.include_keywords)}
+            defaultValue={listValue(campaign?.includeKeywords)}
           />
         </div>
         <div>
@@ -119,7 +119,7 @@ export function CampaignForm({ action, campaign, industries, locations, submitLa
             name="exclude_keywords"
             rows={3}
             className="field"
-            defaultValue={listValue(campaign?.exclude_keywords)}
+            defaultValue={listValue(campaign?.excludeKeywords)}
           />
         </div>
         <div>
@@ -131,7 +131,7 @@ export function CampaignForm({ action, campaign, industries, locations, submitLa
             name="preferred_characteristics"
             rows={3}
             className="field"
-            defaultValue={listValue(campaign?.preferred_characteristics)}
+            defaultValue={listValue(campaign?.preferredCharacteristics)}
           />
         </div>
         <div>
@@ -143,7 +143,7 @@ export function CampaignForm({ action, campaign, industries, locations, submitLa
             name="excluded_characteristics"
             rows={3}
             className="field"
-            defaultValue={listValue(campaign?.excluded_characteristics)}
+            defaultValue={listValue(campaign?.excludedCharacteristics)}
           />
         </div>
       </div>
@@ -156,7 +156,7 @@ export function CampaignForm({ action, campaign, industries, locations, submitLa
           name="workflow_problems"
           rows={4}
           className="field"
-          defaultValue={listValue(campaign?.workflow_problems)}
+          defaultValue={listValue(campaign?.workflowProblems)}
         />
       </div>
       <div>
@@ -182,7 +182,7 @@ export function CampaignForm({ action, campaign, industries, locations, submitLa
             min={1}
             max={500}
             className="field"
-            defaultValue={campaign?.max_candidates_per_run ?? 50}
+            defaultValue={campaign?.maxCandidatesPerRun ?? 50}
           />
         </div>
         <div>
@@ -194,7 +194,7 @@ export function CampaignForm({ action, campaign, industries, locations, submitLa
             name="min_qualification_score"
             type="number"
             className="field"
-            defaultValue={campaign?.min_qualification_score ?? 30}
+            defaultValue={campaign?.minQualificationScore ?? 30}
           />
         </div>
         <div>
@@ -210,7 +210,7 @@ export function CampaignForm({ action, campaign, industries, locations, submitLa
         </div>
       </div>
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="ai_enabled" defaultChecked={campaign?.ai_enabled ?? false} />
+        <input type="checkbox" name="ai_enabled" defaultChecked={campaign?.aiEnabled ?? false} />
         Enable AI analysis (requires configured AI provider)
       </label>
 

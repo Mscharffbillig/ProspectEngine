@@ -1,56 +1,44 @@
+import { asc, desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { db } from "@/db";
+import { businesses, extractedFacts, outreachDrafts, qualificationRuns } from "@/db/schema";
 import { ConfidenceBadge, ScoreBadge, StatusBadge } from "@/components/badges";
 import { LeadActions } from "@/components/lead-actions";
 import { requestDraft, requestResearch, saveLeadNotes } from "@/lib/actions/leads";
-import type {
-  Business,
-  BusinessContact,
-  ExtractedFact,
-  OutreachDraft,
-  PainHypothesis,
-  QualificationRun,
-  WebsitePage,
-} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function BusinessPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
 
-  const { data: business } = await supabase.from("businesses").select("*").eq("id", id).single();
-  if (!business) notFound();
-  const lead = business as Business;
+  const lead = await db().query.businesses.findFirst({
+    where: eq(businesses.id, id),
+    with: {
+      contacts: true,
+      facts: { orderBy: asc(extractedFacts.factKey) },
+      pages: {
+        columns: {
+          id: true,
+          url: true,
+          title: true,
+          httpStatus: true,
+          fetchedAt: true,
+          crawlAllowed: true,
+        },
+      },
+      qualificationRuns: {
+        orderBy: desc(qualificationRuns.createdAt),
+        limit: 1,
+        with: { evidence: true },
+      },
+      hypotheses: true,
+      drafts: { orderBy: desc(outreachDrafts.createdAt) },
+      sources: { columns: { id: true, sourceType: true, query: true, url: true, title: true } },
+    },
+  });
+  if (!lead) notFound();
 
-  const [
-    { data: contacts },
-    { data: facts },
-    { data: pages },
-    { data: runs },
-    { data: hypotheses },
-    { data: drafts },
-    { data: sources },
-  ] = await Promise.all([
-    supabase.from("business_contacts").select("*").eq("business_id", id),
-    supabase.from("extracted_facts").select("*").eq("business_id", id).order("fact_key"),
-    supabase.from("website_pages").select("id, url, title, http_status, fetched_at, crawl_allowed").eq("business_id", id),
-    supabase
-      .from("qualification_runs")
-      .select("*, qualification_evidence(*)")
-      .eq("business_id", id)
-      .order("created_at", { ascending: false })
-      .limit(1),
-    supabase.from("pain_hypotheses").select("*").eq("business_id", id),
-    supabase
-      .from("outreach_drafts")
-      .select("*")
-      .eq("business_id", id)
-      .order("created_at", { ascending: false }),
-    supabase.from("business_sources").select("source_type, query, url, title").eq("business_id", id),
-  ]);
-
-  const latestRun = (runs?.[0] as QualificationRun | undefined) ?? null;
+  const latestRun = lead.qualificationRuns[0] ?? null;
   const draftAction = requestDraft.bind(null, id);
   const researchAction = requestResearch.bind(null, id);
   const notesAction = saveLeadNotes.bind(null, id);
@@ -66,16 +54,16 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="card space-y-1 text-sm">
           <h2 className="mb-1 font-medium">Profile</h2>
-          {lead.website_url && (
+          {lead.websiteUrl && (
             <p>
               Website:{" "}
               <a
-                href={lead.website_url}
+                href={lead.websiteUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:underline"
               >
-                {lead.website_url}
+                {lead.websiteUrl}
               </a>
             </p>
           )}
@@ -84,10 +72,8 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
           {lead.address && <p>Address: {lead.address}</p>}
           <p>Location: {[lead.city, lead.state].filter(Boolean).join(", ") || "unknown"}</p>
           {lead.industry && <p>Industry: {lead.industry}</p>}
-          {lead.rejection_reason && <p>Rejection reason: {lead.rejection_reason}</p>}
-          {lead.next_action_at && (
-            <p>Next action: {new Date(lead.next_action_at).toLocaleDateString()}</p>
-          )}
+          {lead.rejectionReason && <p>Rejection reason: {lead.rejectionReason}</p>}
+          {lead.nextActionAt && <p>Next action: {lead.nextActionAt.toLocaleDateString()}</p>}
           <div className="pt-2">
             <LeadActions businessId={id} />
           </div>
@@ -107,14 +93,14 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
 
         <section className="card text-sm">
           <h2 className="mb-2 font-medium">Contacts</h2>
-          {(contacts ?? []).length === 0 && <p className="text-gray-500">No contacts extracted.</p>}
+          {lead.contacts.length === 0 && <p className="text-gray-500">No contacts extracted.</p>}
           <ul className="space-y-2">
-            {((contacts ?? []) as BusinessContact[]).map((c) => (
+            {lead.contacts.map((c) => (
               <li key={c.id} className="border-b border-gray-100 pb-2 last:border-0">
                 <div className="font-medium">
                   {c.name ?? "(unnamed contact)"}
                   {c.role && <span className="font-normal text-gray-500"> — {c.role}</span>}
-                  {c.is_decision_maker && (
+                  {c.isDecisionMaker && (
                     <span className="ml-1 rounded bg-blue-50 px-1.5 text-xs text-blue-700">
                       decision-maker
                     </span>
@@ -124,7 +110,7 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
                   <div className="text-gray-600">
                     {c.email}{" "}
                     <span className="text-xs text-gray-400">
-                      ({c.email_source?.replaceAll("_", " ")}, {c.email_confidence})
+                      ({c.emailSource?.replaceAll("_", " ")}, {c.emailConfidence})
                     </span>
                   </div>
                 )}
@@ -137,12 +123,14 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
 
       <section className="card text-sm">
         <h2 className="mb-2 font-medium">
-          Qualification {latestRun && `— score ${latestRun.total_score} (v${latestRun.scoring_version}, ${new Date(latestRun.created_at).toLocaleDateString()})`}
+          Qualification{" "}
+          {latestRun &&
+            `— score ${latestRun.totalScore} (v${latestRun.scoringVersion}, ${latestRun.createdAt.toLocaleDateString()})`}
         </h2>
         {!latestRun && <p className="text-gray-500">Not scored yet.</p>}
         {latestRun && (
           <ul className="space-y-1">
-            {latestRun.qualification_evidence.map((e) => (
+            {latestRun.evidence.map((e) => (
               <li key={e.id} className="flex items-start gap-2">
                 <span
                   className={`w-10 shrink-0 text-right font-mono ${
@@ -155,9 +143,9 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
                 <span>
                   {e.label}
                   {e.evidence && <span className="text-gray-500"> — “{e.evidence}”</span>}{" "}
-                  {e.source_url && (
+                  {e.sourceUrl && (
                     <a
-                      href={e.source_url}
+                      href={e.sourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:underline"
@@ -172,16 +160,14 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
         )}
       </section>
 
-      {(hypotheses ?? []).length > 0 && (
+      {lead.hypotheses.length > 0 && (
         <section className="card text-sm">
           <h2 className="mb-2 font-medium">Pain hypotheses (questions, not claims)</h2>
           <ul className="list-disc space-y-1 pl-5">
-            {((hypotheses ?? []) as PainHypothesis[]).map((h) => (
+            {lead.hypotheses.map((h) => (
               <li key={h.id}>
                 {h.question}
-                {h.evidence && (
-                  <span className="text-gray-500"> (evidence: “{h.evidence}”)</span>
-                )}
+                {h.evidence && <span className="text-gray-500"> (evidence: “{h.evidence}”)</span>}
               </li>
             ))}
           </ul>
@@ -189,7 +175,7 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
       )}
 
       <section className="card text-sm">
-        <h2 className="mb-2 font-medium">Extracted facts ({facts?.length ?? 0})</h2>
+        <h2 className="mb-2 font-medium">Extracted facts ({lead.facts.length})</h2>
         <div className="max-h-96 overflow-y-auto">
           <table className="w-full">
             <thead>
@@ -201,18 +187,18 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
               </tr>
             </thead>
             <tbody>
-              {((facts ?? []) as ExtractedFact[]).map((f) => (
+              {lead.facts.map((f) => (
                 <tr key={f.id} className="border-t border-gray-100 align-top">
-                  <td className="py-1.5 pr-3 font-mono text-xs">{f.fact_key}</td>
+                  <td className="py-1.5 pr-3 font-mono text-xs">{f.factKey}</td>
                   <td className="py-1.5 pr-3">{f.value}</td>
                   <td className="py-1.5 pr-3">
                     <ConfidenceBadge confidence={f.confidence} />
                   </td>
                   <td className="py-1.5 text-xs text-gray-500">
                     {f.excerpt && <span>“{f.excerpt}” </span>}
-                    {f.source_url && (
+                    {f.sourceUrl && (
                       <a
-                        href={f.source_url}
+                        href={f.sourceUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 hover:underline"
@@ -232,7 +218,7 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
         <section className="card text-sm">
           <h2 className="mb-2 font-medium">Website pages crawled</h2>
           <ul className="space-y-1">
-            {((pages ?? []) as WebsitePage[]).map((p) => (
+            {lead.pages.map((p) => (
               <li key={p.id}>
                 <a
                   href={p.url}
@@ -243,18 +229,18 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
                   {p.title ?? p.url}
                 </a>{" "}
                 <span className="text-xs text-gray-400">
-                  ({p.http_status}, {new Date(p.fetched_at).toLocaleDateString()}
-                  {p.crawl_allowed ? "" : ", robots disallowed"})
+                  ({p.httpStatus}, {p.fetchedAt.toLocaleDateString()}
+                  {p.crawlAllowed ? "" : ", robots disallowed"})
                 </span>
               </li>
             ))}
-            {(pages ?? []).length === 0 && <li className="text-gray-500">No pages stored.</li>}
+            {lead.pages.length === 0 && <li className="text-gray-500">No pages stored.</li>}
           </ul>
           <h2 className="mb-2 mt-4 font-medium">Discovery sources</h2>
           <ul className="space-y-1 text-xs text-gray-600">
-            {(sources ?? []).map((s, i) => (
-              <li key={i}>
-                [{s.source_type}] {s.query && <span>query: “{s.query}” </span>}
+            {lead.sources.map((s) => (
+              <li key={s.id}>
+                [{s.sourceType}] {s.query && <span>query: “{s.query}” </span>}
                 {s.title}
               </li>
             ))}
@@ -263,15 +249,15 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
 
         <section className="card text-sm">
           <h2 className="mb-2 font-medium">Outreach history</h2>
-          {(drafts ?? []).length === 0 && (
+          {lead.drafts.length === 0 && (
             <p className="text-gray-500">No drafts yet. Use “Generate outreach draft”.</p>
           )}
           <ul className="space-y-2">
-            {((drafts ?? []) as OutreachDraft[]).map((d) => (
+            {lead.drafts.map((d) => (
               <li key={d.id} className="rounded border border-gray-100 p-2">
                 <div className="mb-1 text-xs text-gray-500">
-                  {d.status} · {d.method} · {new Date(d.created_at).toLocaleString()}
-                  {d.sent_at && ` · sent ${new Date(d.sent_at).toLocaleDateString()} via ${d.channel}`}
+                  {d.status} · {d.method} · {d.createdAt.toLocaleString()}
+                  {d.sentAt && ` · sent ${d.sentAt.toLocaleDateString()} via ${d.channel}`}
                 </div>
                 <pre className="whitespace-pre-wrap font-sans text-xs text-gray-700">{d.body}</pre>
               </li>

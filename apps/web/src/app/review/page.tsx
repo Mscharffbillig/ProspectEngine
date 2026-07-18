@@ -1,20 +1,12 @@
+import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { db } from "@/db";
+import { businesses, qualificationRuns } from "@/db/schema";
 import { LeadActions } from "@/components/lead-actions";
 import { ScoreBadge, StatusBadge } from "@/components/badges";
-import type {
-  Business,
-  BusinessContact,
-  PainHypothesis,
-  QualificationEvidence,
-} from "@/lib/types";
+import type { QualificationEvidence } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-
-type ReviewLead = Business & {
-  business_contacts: BusinessContact[];
-  pain_hypotheses: PainHypothesis[];
-};
 
 export default async function ReviewPage({
   searchParams,
@@ -22,38 +14,43 @@ export default async function ReviewPage({
   searchParams: Promise<{ status?: string; campaign?: string }>;
 }) {
   const params = await searchParams;
-  const supabase = await createClient();
 
   const statusFilter =
-    params.status === "all" ? ["qualified", "needs_review", "approved", "snoozed"] :
-    params.status ? [params.status] : ["qualified", "needs_review"];
+    params.status === "all"
+      ? ["qualified", "needs_review", "approved", "snoozed"]
+      : params.status
+        ? [params.status]
+        : ["qualified", "needs_review"];
 
-  let query = supabase
-    .from("businesses")
-    .select("*, business_contacts(*), pain_hypotheses(*)")
-    .in("status", statusFilter)
-    .order("score", { ascending: false, nullsFirst: false })
-    .limit(50);
-  if (params.campaign) query = query.eq("campaign_id", params.campaign);
-  const { data: leads, error } = await query;
+  const filters: SQL[] = [inArray(businesses.status, statusFilter)];
+  if (params.campaign) filters.push(eq(businesses.campaignId, params.campaign));
+
+  const leads = await db().query.businesses.findMany({
+    where: and(...filters),
+    with: {
+      contacts: true,
+      hypotheses: true,
+      campaign: { columns: { name: true } },
+    },
+    orderBy: [desc(sql`${businesses.score} nulls last`)],
+    limit: 50,
+  });
 
   // Latest qualification evidence per business, for signal chips.
-  const leadIds = (leads ?? []).map((l) => l.id);
-  const { data: runs } = leadIds.length
-    ? await supabase
-        .from("qualification_runs")
-        .select("business_id, created_at, qualification_evidence(*)")
-        .in("business_id", leadIds)
-        .order("created_at", { ascending: false })
-    : { data: [] };
+  const leadIds = leads.map((l) => l.id);
+  const runs = leadIds.length
+    ? await db().query.qualificationRuns.findMany({
+        where: inArray(qualificationRuns.businessId, leadIds),
+        with: { evidence: true },
+        orderBy: desc(qualificationRuns.createdAt),
+      })
+    : [];
   const evidenceByBusiness = new Map<string, QualificationEvidence[]>();
-  for (const run of runs ?? []) {
-    if (!evidenceByBusiness.has(run.business_id)) {
-      evidenceByBusiness.set(run.business_id, run.qualification_evidence ?? []);
+  for (const run of runs) {
+    if (!evidenceByBusiness.has(run.businessId)) {
+      evidenceByBusiness.set(run.businessId, run.evidence);
     }
   }
-
-  const { data: campaigns } = await supabase.from("campaigns").select("id, name");
 
   return (
     <div className="space-y-4">
@@ -82,12 +79,7 @@ export default async function ReviewPage({
         </nav>
       </div>
 
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          Failed to load leads: {error.message}
-        </p>
-      )}
-      {leads && leads.length === 0 && (
+      {leads.length === 0 && (
         <p className="text-sm text-gray-500">
           Nothing to review. Run a campaign from the Campaigns page and make sure the worker is
           running.
@@ -95,13 +87,12 @@ export default async function ReviewPage({
       )}
 
       <div className="space-y-4">
-        {((leads ?? []) as ReviewLead[]).map((lead) => {
+        {leads.map((lead) => {
           const decisionMaker =
-            lead.business_contacts.find((c) => c.is_decision_maker && c.name) ??
-            lead.business_contacts.find((c) => c.name);
+            lead.contacts.find((c) => c.isDecisionMaker && c.name) ??
+            lead.contacts.find((c) => c.name);
           const contactMethod = decisionMaker?.email ?? lead.email ?? lead.phone ?? "contact form";
           const evidence = evidenceByBusiness.get(lead.id) ?? [];
-          const campaignName = campaigns?.find((c) => c.id === lead.campaign_id)?.name;
           return (
             <article key={lead.id} className="card space-y-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -117,14 +108,18 @@ export default async function ReviewPage({
                     <StatusBadge status={lead.status} />
                   </div>
                   <div className="mt-0.5 text-sm text-gray-500">
-                    {[lead.industry, [lead.city, lead.state].filter(Boolean).join(", "), campaignName]
+                    {[
+                      lead.industry,
+                      [lead.city, lead.state].filter(Boolean).join(", "),
+                      lead.campaign?.name,
+                    ]
                       .filter(Boolean)
                       .join(" · ")}
-                    {lead.website_url && (
+                    {lead.websiteUrl && (
                       <>
                         {" · "}
                         <a
-                          href={lead.website_url}
+                          href={lead.websiteUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline"
@@ -151,9 +146,9 @@ export default async function ReviewPage({
                   <div className="text-gray-500">
                     Best contact: <span className="text-gray-900">{contactMethod}</span>
                   </div>
-                  {lead.researched_at && (
+                  {lead.researchedAt && (
                     <div className="text-gray-500">
-                      Researched: {new Date(lead.researched_at).toLocaleDateString()}
+                      Researched: {lead.researchedAt.toLocaleDateString()}
                     </div>
                   )}
                 </div>
@@ -173,9 +168,9 @@ export default async function ReviewPage({
                 </div>
               </div>
 
-              {lead.pain_hypotheses.length > 0 && (
+              {lead.hypotheses.length > 0 && (
                 <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
-                  {lead.pain_hypotheses.slice(0, 3).map((h) => (
+                  {lead.hypotheses.slice(0, 3).map((h) => (
                     <li key={h.id}>{h.question}</li>
                   ))}
                 </ul>
