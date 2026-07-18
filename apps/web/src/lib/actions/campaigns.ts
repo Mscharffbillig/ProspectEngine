@@ -11,6 +11,7 @@ import {
   researchRuns,
   researchTasks,
 } from "@/db/schema";
+import { requireUser } from "@/lib/auth/server";
 import { campaignSchema, toList } from "@/lib/schemas";
 
 function parseCampaignForm(formData: FormData) {
@@ -72,6 +73,7 @@ export async function createCampaign(
   _prev: { error: string } | { ok: true } | null,
   formData: FormData,
 ): Promise<{ error: string } | { ok: true } | null> {
+  await requireUser();
   const parsed = parseCampaignForm(formData);
   if (!parsed.success) {
     return { error: parsed.error.errors.map((e) => e.message).join("; ") };
@@ -97,6 +99,7 @@ export async function updateCampaign(
   _prev: { error: string } | { ok: true } | null,
   formData: FormData,
 ): Promise<{ error: string } | { ok: true }> {
+  await requireUser();
   const parsed = parseCampaignForm(formData);
   if (!parsed.success) {
     return { error: parsed.error.errors.map((e) => e.message).join("; ") };
@@ -115,6 +118,7 @@ export async function updateCampaign(
 }
 
 export async function runCampaign(campaignId: string): Promise<void> {
+  await requireUser();
   const [run] = await db()
     .insert(researchRuns)
     .values({ campaignId })
@@ -133,6 +137,7 @@ export async function setCampaignStatus(
   campaignId: string,
   status: "active" | "paused" | "archived",
 ): Promise<void> {
+  await requireUser();
   await db().update(campaigns).set({ status }).where(eq(campaigns.id, campaignId));
   revalidatePath("/campaigns");
   revalidatePath(`/campaigns/${campaignId}`);

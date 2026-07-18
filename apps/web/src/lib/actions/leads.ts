@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { businesses, followUpTasks, researchTasks } from "@/db/schema";
+import { requireUser } from "@/lib/auth/server";
 
 function revalidateLeadPages(businessId: string) {
   revalidatePath("/review");
@@ -13,6 +14,7 @@ function revalidateLeadPages(businessId: string) {
 }
 
 export async function approveLead(businessId: string): Promise<void> {
+  await requireUser();
   await db()
     .update(businesses)
     .set({ status: "approved", lastActionAt: new Date() })
@@ -26,6 +28,7 @@ export async function approveLead(businessId: string): Promise<void> {
 }
 
 export async function rejectLead(businessId: string, reason: string): Promise<void> {
+  await requireUser();
   await db()
     .update(businesses)
     .set({ status: "rejected", rejectionReason: reason, lastActionAt: new Date() })
@@ -35,6 +38,7 @@ export async function rejectLead(businessId: string, reason: string): Promise<vo
 }
 
 export async function snoozeLead(businessId: string, days: number): Promise<void> {
+  await requireUser();
   const until = new Date();
   until.setDate(until.getDate() + days);
   await db()
@@ -50,6 +54,7 @@ export async function snoozeLead(businessId: string, days: number): Promise<void
 }
 
 export async function setLeadStatus(businessId: string, status: string): Promise<void> {
+  await requireUser();
   await db()
     .update(businesses)
     .set({ status, lastActionAt: new Date() })
@@ -61,6 +66,7 @@ export async function setLeadStatus(businessId: string, status: string): Promise
 }
 
 export async function saveLeadNotes(businessId: string, formData: FormData): Promise<void> {
+  await requireUser();
   const notes = formData.get("notes");
   await db()
     .update(businesses)
@@ -70,6 +76,7 @@ export async function saveLeadNotes(businessId: string, formData: FormData): Pro
 }
 
 export async function requestDraft(businessId: string): Promise<void> {
+  await requireUser();
   await db().insert(researchTasks).values({
     taskType: "generate_outreach_draft",
     businessId,
@@ -78,6 +85,7 @@ export async function requestDraft(businessId: string): Promise<void> {
 }
 
 export async function requestResearch(businessId: string): Promise<void> {
+  await requireUser();
   await db().insert(researchTasks).values({
     taskType: "research_website",
     businessId,

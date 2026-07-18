@@ -1,4 +1,5 @@
 import { createNeonAuth } from "@neondatabase/auth/next/server";
+import { redirect } from "next/navigation";
 
 // Lazy so builds and the zero-credential demo mode work without Neon Auth env
 // vars. Env: NEON_AUTH_BASE_URL (from the Neon Console Auth page) and
@@ -28,4 +29,15 @@ export async function currentUser(): Promise<{ name?: string | null; email: stri
   if (!authConfigured()) return null;
   const { data: session } = await neonAuth().getSession();
   return session?.user ?? null;
+}
+
+/**
+ * Auth gate for server actions (the proxy only guards GET navigations, since
+ * the SDK middleware rejects POSTs and would break actions). No-op when auth
+ * is unconfigured (open demo mode).
+ */
+export async function requireUser(): Promise<void> {
+  if (!authConfigured()) return;
+  const { data: session } = await neonAuth().getSession();
+  if (!session?.user) redirect("/auth/sign-in");
 }

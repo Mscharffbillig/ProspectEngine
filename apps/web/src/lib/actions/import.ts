@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { campaigns, importJobs, researchTasks } from "@/db/schema";
+import { requireUser } from "@/lib/auth/server";
 import { csvRowSchema, type CsvRow } from "@/lib/schemas";
 
 export interface ImportCommitResult {
@@ -13,6 +14,7 @@ export interface ImportCommitResult {
 }
 
 export async function listCampaignOptions(): Promise<{ id: string; name: string }[]> {
+  await requireUser();
   return db().select({ id: campaigns.id, name: campaigns.name }).from(campaigns);
 }
 
@@ -25,6 +27,7 @@ export async function commitImport(
   campaignId: string | null,
   records: Record<string, string>[],
 ): Promise<ImportCommitResult> {
+  await requireUser();
   if (records.length === 0) return { error: "No rows to import" };
   if (records.length > 5000) return { error: "Import limited to 5000 rows" };
 

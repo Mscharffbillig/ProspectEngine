@@ -10,6 +10,7 @@ import {
   outreachEvents,
   suppressionList,
 } from "@/db/schema";
+import { requireUser } from "@/lib/auth/server";
 
 const FIRST_FOLLOW_UP_DAYS = 4;
 const FINAL_FOLLOW_UP_DAYS = 10;
@@ -33,6 +34,7 @@ export async function markDraftSent(
   businessId: string,
   channel: string,
 ): Promise<void> {
+  await requireUser();
   const now = new Date();
   await db()
     .update(outreachDrafts)
@@ -65,6 +67,7 @@ export async function markDraftSent(
 
 /** Record a reply: stops pending follow-up reminders. */
 export async function recordReply(businessId: string, notes: string): Promise<void> {
+  await requireUser();
   await db().insert(outreachEvents).values({
     businessId,
     eventType: "reply",
@@ -80,6 +83,7 @@ export async function recordReply(businessId: string, notes: string): Promise<vo
 
 /** Permanent opt-out: suppression-list entry + do_not_contact + cancel reminders. */
 export async function recordOptOut(businessId: string): Promise<void> {
+  await requireUser();
   const business = await db().query.businesses.findFirst({
     where: eq(businesses.id, businessId),
     columns: { id: true, name: true, domain: true, email: true, phone: true },
@@ -108,6 +112,7 @@ export async function recordOptOut(businessId: string): Promise<void> {
 }
 
 export async function completeFollowUp(followUpId: string, businessId: string): Promise<void> {
+  await requireUser();
   await db()
     .update(followUpTasks)
     .set({ status: "done", completedAt: new Date() })
@@ -116,6 +121,7 @@ export async function completeFollowUp(followUpId: string, businessId: string): 
 }
 
 export async function discardDraft(draftId: string, businessId: string): Promise<void> {
+  await requireUser();
   await db()
     .update(outreachDrafts)
     .set({ status: "discarded" })
