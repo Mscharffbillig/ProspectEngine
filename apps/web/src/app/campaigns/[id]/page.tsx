@@ -27,7 +27,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     }),
     db().query.businesses.findMany({
       where: eq(businesses.campaignId, id),
-      orderBy: [desc(sql`${businesses.score} nulls last`)],
+      orderBy: [sql`${businesses.score} desc nulls last`],
       limit: 25,
     }),
   ]);

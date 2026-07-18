@@ -1,4 +1,6 @@
 import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+// Sorted "score desc nulls last" — drizzle's desc() would misplace the
+// NULLS clause, so the fragment is written out.
 import Link from "next/link";
 import { db } from "@/db";
 import { businesses, qualificationRuns } from "@/db/schema";
@@ -32,7 +34,7 @@ export default async function ReviewPage({
       hypotheses: true,
       campaign: { columns: { name: true } },
     },
-    orderBy: [desc(sql`${businesses.score} nulls last`)],
+    orderBy: [sql`${businesses.score} desc nulls last`],
     limit: 50,
   });
 
