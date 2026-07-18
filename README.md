@@ -11,7 +11,7 @@ source URL, supporting excerpt, and confidence label.
 ## Repository structure
 
 ```text
-apps/web                  Next.js 15 + TypeScript + Tailwind web app (Neon Auth, Drizzle ORM)
+apps/web                  Next.js 16 + TypeScript + Tailwind web app (Neon Auth, Drizzle ORM)
 apps/web/src/db/schema.ts Drizzle schema — source of truth for the database
 apps/web/drizzle/         Generated SQL migrations (committed; applied with drizzle-kit)
 services/research-worker  Python 3.11+ background worker (discovery, crawl, extract, score, draft)
@@ -26,9 +26,12 @@ docs/                     EC2 deployment guide
   worker connects with psycopg using the same pooled string (single-statement
   autocommit, safe through the transaction-mode pooler). Migrations use the
   **direct** connection string.
-- **Auth**: **Neon Auth** (Stack). Single-user MVP; sign-in pages are served at
-  `/handler/*`. If the STACK env vars are absent the app runs open with a
-  warning banner so local demo work needs zero external accounts.
+- **Auth**: **Neon Auth** (managed Better Auth, `@neondatabase/auth`). The auth
+  server is hosted by Neon; the app mounts a proxy at `/api/auth/*`, protects
+  routes in `src/proxy.ts`, and serves its own sign-in page at `/auth/sign-in`.
+  Users live in the `neon_auth` schema of the project database. If
+  `NEON_AUTH_BASE_URL` / `NEON_AUTH_COOKIE_SECRET` are absent the app runs open
+  with a warning banner so local demo work needs zero external accounts.
 - **Worker queue**: plain Postgres (`FOR UPDATE SKIP LOCKED`) — unchanged.
 
 ## How it works
@@ -60,9 +63,9 @@ docs/                     EC2 deployment guide
    (see `.env.example`):
    - `DATABASE_URL` — pooled (host contains `-pooler`)
    - `DIRECT_DATABASE_URL` — direct
-3. Enable **Neon Auth** on the project (Console → Auth) and copy
-   `NEXT_PUBLIC_STACK_PROJECT_ID`, `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`,
-   and `STACK_SECRET_SERVER_KEY` into `.env`.
+3. Enable **Neon Auth** on the project (Console → Auth), copy the Auth base URL
+   into `NEON_AUTH_BASE_URL`, and set `NEON_AUTH_COOKIE_SECRET` to any random
+   32+ character string (`openssl rand -base64 32`).
 4. Apply migrations and seed:
 
 ```bash
@@ -123,8 +126,8 @@ See `.env.example`. Highlights:
 |---|---|
 | `DATABASE_URL` | Neon **pooled** connection string (web app + worker) |
 | `DIRECT_DATABASE_URL` | Neon **direct** connection string (migrations only) |
-| `NEXT_PUBLIC_STACK_PROJECT_ID` / `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` | Neon Auth (browser-safe) |
-| `STACK_SECRET_SERVER_KEY` | Neon Auth server key — never sent to the browser |
+| `NEON_AUTH_BASE_URL` | Neon Auth server URL (Console → Auth) |
+| `NEON_AUTH_COOKIE_SECRET` | 32+ char secret for session cookies — server-side only |
 | `BRAVE_SEARCH_API_KEY` | Live discovery (optional; demo mode works without) |
 | `HUNTER_API_KEY` | Optional email enrichment (Phase 2 adapter) |
 | `AI_PROVIDER` / `ANTHROPIC_API_KEY` / `AI_MODEL` | Optional AI analysis (Phase 2) |
@@ -198,9 +201,6 @@ web app.
 
 ## Known limitations
 
-- Migrations have not yet been executed against a live Neon database from this
-  machine (Neon CLI auth pending); run `npm run db:migrate && npm run db:seed`
-  once your Neon project exists.
 - OSM Overpass adapter, Hunter enrichment, and AI provider integration are
   Phase 2 (interfaces exist; adapters not yet implemented).
 - Scheduled/recurring campaign runs are manual-trigger only.

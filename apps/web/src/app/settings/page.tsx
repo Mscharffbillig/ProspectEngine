@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { qualificationRules, workerHeartbeats } from "@/db/schema";
 
@@ -21,14 +21,22 @@ function Status({ configured, label }: { configured: boolean; label: string }) {
 
 export default async function SettingsPage() {
   const [heartbeats, rules] = await Promise.all([
-    db().query.workerHeartbeats.findMany({ orderBy: desc(workerHeartbeats.lastSeenAt) }),
+    db()
+      .select({
+        id: workerHeartbeats.id,
+        lastSeenAt: workerHeartbeats.lastSeenAt,
+        info: workerHeartbeats.info,
+        alive: sql<boolean>`${workerHeartbeats.lastSeenAt} > now() - interval '2 minutes'`,
+      })
+      .from(workerHeartbeats)
+      .orderBy(desc(workerHeartbeats.lastSeenAt)),
     db().query.qualificationRules.findMany({ orderBy: desc(qualificationRules.points) }),
   ]);
 
   // Presence checks only — secret values never reach the browser.
   const neonConfigured = Boolean(process.env.DATABASE_URL);
   const neonAuthConfigured = Boolean(
-    process.env.NEXT_PUBLIC_STACK_PROJECT_ID && process.env.STACK_SECRET_SERVER_KEY,
+    process.env.NEON_AUTH_BASE_URL && process.env.NEON_AUTH_COOKIE_SECRET,
   );
   const braveConfigured = Boolean(process.env.BRAVE_SEARCH_API_KEY);
   const hunterConfigured = Boolean(process.env.HUNTER_API_KEY);
@@ -36,8 +44,6 @@ export default async function SettingsPage() {
     process.env.AI_PROVIDER && (process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY),
   );
   const demoMode = (process.env.DEMO_MODE ?? "true") !== "false";
-
-  const staleMs = 2 * 60 * 1000;
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -72,7 +78,7 @@ export default async function SettingsPage() {
         <ul className="space-y-1">
           {heartbeats.map((h) => {
             const info = (h.info ?? {}) as { mode?: string; demo_mode?: boolean };
-            const alive = Date.now() - h.lastSeenAt.getTime() < staleMs;
+            const alive = h.alive;
             return (
               <li key={h.id} className="flex items-center justify-between">
                 <span>

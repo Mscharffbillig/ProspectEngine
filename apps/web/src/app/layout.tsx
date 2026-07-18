@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { StackProvider, StackTheme } from "@stackframe/stack";
 import "./globals.css";
-import { stackConfigured, stackServerApp } from "@/stack";
+import { authConfigured, currentUser } from "@/lib/auth/server";
+import { signOutAction } from "@/lib/actions/auth";
 
 export const metadata: Metadata = {
   title: "ProspectEngine",
@@ -32,12 +32,11 @@ function Nav({ showSignOut }: { showSignOut: boolean }) {
           </Link>
         ))}
         {showSignOut && (
-          <Link
-            href="/handler/sign-out"
-            className="ml-auto text-sm text-gray-500 hover:text-gray-900"
-          >
-            Sign out
-          </Link>
+          <form action={signOutAction} className="ml-auto">
+            <button type="submit" className="text-sm text-gray-500 hover:text-gray-900">
+              Sign out
+            </button>
+          </form>
         )}
       </nav>
     </header>
@@ -45,34 +44,21 @@ function Nav({ showSignOut }: { showSignOut: boolean }) {
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  if (!stackConfigured()) {
-    // Neon Auth not set up yet: run open with a visible warning banner.
-    return (
-      <html lang="en">
-        <body className="min-h-screen bg-gray-50 text-gray-900">
-          <div className="bg-yellow-100 px-4 py-1.5 text-center text-xs text-yellow-900">
-            Neon Auth is not configured — the app is running without sign-in. Set the STACK env
-            vars (see .env.example) to enable authentication.
-          </div>
-          <Nav showSignOut={false} />
-          <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
-        </body>
-      </html>
-    );
-  }
-
-  const app = stackServerApp();
-  const user = await app.getUser();
+  const configured = authConfigured();
+  const user = configured ? await currentUser() : null;
 
   return (
     <html lang="en">
       <body className="min-h-screen bg-gray-50 text-gray-900">
-        <StackProvider app={app}>
-          <StackTheme>
-            {user && <Nav showSignOut />}
-            <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
-          </StackTheme>
-        </StackProvider>
+        {!configured && (
+          <div className="bg-yellow-100 px-4 py-1.5 text-center text-xs text-yellow-900">
+            Neon Auth is not configured — the app is running without sign-in. Set
+            NEON_AUTH_BASE_URL and NEON_AUTH_COOKIE_SECRET (see .env.example) to enable
+            authentication.
+          </div>
+        )}
+        {(user || !configured) && <Nav showSignOut={Boolean(user)} />}
+        <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
       </body>
     </html>
   );

@@ -57,8 +57,8 @@ def render_draft(inp: DraftInput) -> tuple[str, str]:
         f"companies in {location}. {characteristic_line}".strip(),
         "",
         "I'm speaking with business owners about processes still handled through "
-        "spreadsheets, paper, texts, duplicate data entry, or memory. I'm especially "
-        f"interested in {_as_clause(question)}",
+        "spreadsheets, paper, texts, duplicate data entry, or memory. One thing "
+        f"I'm curious about: {_question_core(question)}",
         "",
         "Would you be open to a brief 15-20 minute conversation? I'm researching "
         "common workflow problems rather than pitching a large software platform.",
@@ -70,14 +70,11 @@ def render_draft(inp: DraftInput) -> tuple[str, str]:
     return subject, "\n".join(body_parts)
 
 
-def _as_clause(question: str) -> str:
-    """Turn a standalone hypothesis question into an embedded clause."""
+def _question_core(question: str) -> str:
+    """Strip the 'Because ...' framing from a hypothesis, keeping the question."""
     q = question.strip().rstrip("?").rstrip(".")
-    # Strip the "Because ..." framing if present; keep the "how ..." core.
     lower = q.lower()
     how = lower.find("how ")
     if how > 0:
         q = q[how:]
-    if not q.lower().startswith("how"):
-        q = "how " + q
-    return q[0].lower() + q[1:] + "."
+    return q[0].lower() + q[1:] + "?"

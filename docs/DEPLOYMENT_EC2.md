@@ -80,8 +80,8 @@ Instead of the service, drain the queue a few times a day:
 ## 6. Web app hosting
 
 The Next.js app deploys anywhere Node runs (Vercel is simplest; set
-`DATABASE_URL`, the three `STACK` Neon Auth vars, and provider keys as project
-env vars). It can also
+`DATABASE_URL`, `NEON_AUTH_BASE_URL`, `NEON_AUTH_COOKIE_SECRET`, and provider
+keys as project env vars). It can also
 run on the same EC2 box (`npm run build && npm run start` behind nginx), but the
 worker does not require it — the app and worker only share the database.
 
