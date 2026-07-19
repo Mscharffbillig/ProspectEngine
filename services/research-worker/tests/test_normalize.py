@@ -6,6 +6,7 @@ from worker.normalize import (
     normalize_phone,
     normalize_state,
     normalize_url,
+    parse_city_state,
 )
 
 
@@ -82,3 +83,18 @@ class TestLocation:
 
     def test_address(self):
         assert normalize_address("123  Main St.,") == "123 main st"
+
+    def test_parse_city_state(self):
+        assert parse_city_state("4820 Grand Ave, Duluth, MN 55807") == ("Duluth", "MN")
+        assert parse_city_state("1210 Industrial Blvd, St. Cloud, MN 56301") == ("St. Cloud", "MN")
+        assert parse_city_state("no city here") is None
+
+    def test_parse_city_state_single_comma(self):
+        # Street runs into the city with no separating comma.
+        assert parse_city_state("1234 Plymouth Avenue N Minneapolis, MN 55412") == (
+            "Minneapolis",
+            "MN",
+        )
+        assert parse_city_state("500 Main St Suite A Eagan, MN 55121") == ("Eagan", "MN")
+        assert parse_city_state("21 Pine Tree Avenue Plover, WI 54467") == ("Plover", "WI")
+        assert parse_city_state("3440 Federal Dr, Suite A Eagan, MN 55122") == ("Eagan", "MN")

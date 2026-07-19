@@ -8,6 +8,7 @@ from worker import queue
 from worker.crawler import crawl_site
 from worker.db import jsonb
 from worker.extraction import ROLE_TYPES, dedupe_facts, extract_from_page
+from worker.normalize import parse_city_state
 from worker.queue import Task
 
 log = logging.getLogger(__name__)
@@ -188,11 +189,22 @@ def _fill_business_fields(conn: psycopg.Connection, business_id: str | None, fac
     def first_value(key: str) -> str | None:
         return next((f.value for f in facts if f.key == key), None)
 
+    address = first_value("address")
+    city_state = parse_city_state(address) if address else None
     conn.execute(
         """update businesses set
              phone = coalesce(phone, %s),
              email = coalesce(email, %s),
-             address = coalesce(address, %s)
+             address = coalesce(address, %s),
+             city = coalesce(city, %s),
+             state = coalesce(state, %s)
            where id = %s""",
-        (first_value("phone"), first_value("email"), first_value("address"), business_id),
+        (
+            first_value("phone"),
+            first_value("email"),
+            address,
+            city_state[0] if city_state else None,
+            city_state[1] if city_state else None,
+            business_id,
+        ),
     )

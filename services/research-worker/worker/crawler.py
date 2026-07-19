@@ -132,7 +132,10 @@ def _parse_html(url: str, status: int, html: str) -> FetchedPage:
         tag.decompose()
     title = soup.title.get_text(strip=True) if soup.title else None
     text = re.sub(r"\n{3,}", "\n\n", soup.get_text(separator="\n", strip=True))
-    links = [urljoin(url, a["href"]) for a in soup.find_all("a", href=True)]
+    # Fragments never change the fetched document — strip them so /page and
+    # /page#section are one URL.
+    links = [urljoin(url, a["href"]).split("#")[0] for a in soup.find_all("a", href=True)]
+    links = [link for link in links if link]
     return FetchedPage(
         url=url,
         title=title,
@@ -198,7 +201,7 @@ def crawl_site(
                 continue
 
             page = fetcher.fetch(url)
-            if not settings.demo_mode:
+            if isinstance(fetcher, Fetcher):  # politeness delay for live sites only
                 time.sleep(settings.crawl_delay_seconds)
 
             if page.error and page.http_status in (None, 404):

@@ -140,6 +140,73 @@ def normalize_state(state: str) -> str:
     return _STATE_ABBREVIATIONS.get(cleaned.lower(), cleaned)
 
 
+# Street/unit words that precede the city in comma-less addresses
+# ("1234 Plymouth Avenue N Minneapolis, MN 55412").
+_STREET_TAIL_WORDS = {
+    "st",
+    "street",
+    "ave",
+    "avenue",
+    "rd",
+    "road",
+    "blvd",
+    "boulevard",
+    "dr",
+    "drive",
+    "ln",
+    "lane",
+    "way",
+    "ct",
+    "court",
+    "hwy",
+    "highway",
+    "n",
+    "s",
+    "e",
+    "w",
+    "ne",
+    "nw",
+    "se",
+    "sw",
+    "suite",
+    "ste",
+    "unit",
+}
+
+
+def _city_from_tail(text: str) -> str | None:
+    """Walk back from the state, keeping words until a street/unit word or
+    number appears ('Main St Suite A Eagan' -> 'Eagan')."""
+    city_words: list[str] = []
+    for word in reversed(text.split()):
+        cleaned = word.lower().rstrip(".,#")
+        if cleaned in _STREET_TAIL_WORDS or any(ch.isdigit() for ch in word) or len(cleaned) <= 1:
+            break
+        city_words.insert(0, word)
+    return " ".join(city_words[-3:]) if city_words else None
+
+
+def parse_city_state(address: str) -> tuple[str, str] | None:
+    """Pull (city, state) from a US address ending in 'City, ST 55807'."""
+    # Preferred: fully comma-separated "..., City, ST 55807".
+    match = re.search(r",\s*([A-Za-z .'-]{2,40}),\s*([A-Z]{2})\s+\d{5}", address)
+    if match:
+        captured = match.group(1)
+        tokens = {w.lower().rstrip(".,#") for w in captured.split()}
+        # "Suite A Eagan" style: street/unit words leaked into the capture.
+        # "st"/"ste" excluded from the trigger so "St. Cloud" stays intact.
+        if tokens & (_STREET_TAIL_WORDS - {"st", "ste"}) or any(ch.isdigit() for ch in captured):
+            city = _city_from_tail(captured)
+            return (normalize_city(city), match.group(2)) if city else None
+        return normalize_city(captured), match.group(2)
+    # Fallback: "... Street City, ST 55807" with no comma before the city.
+    match = re.search(r"([A-Za-z .'-]{2,60}),\s*([A-Z]{2})\s+\d{5}", address)
+    if not match:
+        return None
+    city = _city_from_tail(match.group(1))
+    return (normalize_city(city), match.group(2)) if city else None
+
+
 def normalize_address(address: str) -> str:
     """Light address normalization for matching: collapse whitespace, lowercase, expand nothing."""
     return re.sub(r"\s+", " ", address.strip().lower()).rstrip(".,")
