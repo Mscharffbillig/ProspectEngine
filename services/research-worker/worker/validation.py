@@ -11,6 +11,30 @@ from worker.crawler import FetchedPage
 from worker.extraction import Fact
 from worker.identity import NameResolution
 from worker.normalize import normalize_state
+from worker.scoring import CONFIDENCE_RANK, SignalEvidence
+
+# Signals that demonstrate operational complexity worth software outreach.
+# Contactability, independence language, and generic commercial/service-area
+# phrasing are deliberately absent — they prove existence, not complexity.
+COMPLEXITY_SIGNALS = (
+    "multiple_crews",
+    "hiring_coordination",
+    "multiple_service_areas",
+    "equipment_heavy",
+    "recurring_service",
+    "emergency_service",
+    "commercial_or_recurring",
+)
+
+# Decision-maker roles that indicate coordination structure (owner alone
+# proves ownership, not operational complexity).
+OPS_ROLE_TYPES = {
+    "general_manager",
+    "operations_manager",
+    "office_manager",
+    "service_manager",
+    "project_manager",
+}
 
 VALIDATION_STATES = (
     "pending_validation",
@@ -77,6 +101,35 @@ def _geography_terms(locations: list[str]) -> list[str]:
     return terms
 
 
+def complexity_evidence(
+    signals: dict[str, SignalEvidence], ops_manager_count: int = 0
+) -> tuple[str, SignalEvidence] | None:
+    """The strongest high-confidence operational-complexity signal, if any."""
+    for key in COMPLEXITY_SIGNALS:
+        evidence = signals.get(key)
+        if (
+            evidence is not None
+            and CONFIDENCE_RANK.get(evidence.confidence, 0) >= CONFIDENCE_RANK["high"]
+        ):
+            return key, evidence
+    if ops_manager_count > 0:
+        return (
+            "named_operations_role",
+            SignalEvidence(
+                f"{ops_manager_count} named operations/office/service/project manager(s)",
+                None,
+                "high",
+            ),
+        )
+    return None
+
+
+def should_qualify(validation_state: str, score: int, min_score: int, has_complexity: bool) -> bool:
+    """Qualified = all hard gates pass AND score meets threshold AND at least
+    one high-confidence operational-complexity signal exists."""
+    return validation_state == "valid" and score >= min_score and has_complexity
+
+
 def validate_business(
     pages: list[FetchedPage],
     facts: list[Fact],
@@ -84,6 +137,8 @@ def validate_business(
     industries: list[str],
     locations: list[str],
     business_state: str | None = None,
+    signals: dict[str, SignalEvidence] | None = None,
+    ops_manager_count: int = 0,
 ) -> ValidationResult:
     checks: dict[str, dict] = {}
     reasons: list[str] = []
@@ -150,21 +205,30 @@ def validate_business(
     if locations and matched_geo is None:
         reasons.append("wrong_geography")
 
-    # Gate: business identity resolved with acceptable confidence.
-    identity_ok = name_resolution is not None and name_resolution.confidence in (
-        "confirmed",
-        "high",
-        "medium",
+    # Gate: business identity resolved with acceptable confidence AND without
+    # an unresolved conflict between name/domain/email evidence.
+    has_conflict = bool(name_resolution and name_resolution.conflict)
+    identity_ok = (
+        name_resolution is not None
+        and name_resolution.confidence in ("confirmed", "high", "medium")
+        and not has_conflict
     )
     checks["identity"] = {
         "passed": bool(identity_ok),
         "detail": (
-            f"{name_resolution.name!r} via {name_resolution.source} ({name_resolution.confidence})"
+            (
+                f"{name_resolution.name!r} via {name_resolution.source} "
+                f"({name_resolution.confidence})"
+                + (f"; CONFLICT: {name_resolution.conflict_detail}" if has_conflict else "")
+            )
             if name_resolution
             else "no name resolution"
         ),
     }
-    if not identity_ok:
+    if has_conflict:
+        reasons.append("identity_conflict")
+        needs_review = True
+    elif not identity_ok:
         reasons.append("identity_unconfirmed")
         needs_review = True
 
@@ -180,7 +244,23 @@ def validate_business(
     if franchise is not None:
         reasons.append("franchise_or_national_company")
 
-    hard_failures = [r for r in reasons if r != "identity_unconfirmed"]
+    # Requirement (warning, not a hard gate): at least one high-confidence
+    # operational-complexity signal. Without it a lead stays in needs_review.
+    if signals is not None:
+        complexity = complexity_evidence(signals, ops_manager_count)
+        checks["complexity"] = {
+            "passed": complexity is not None,
+            "detail": (
+                f"{complexity[0].replace('_', ' ')}: {complexity[1].evidence[:140]}"
+                if complexity
+                else "no high-confidence operational-complexity signal"
+            ),
+        }
+        if complexity is None:
+            reasons.append("insufficient_complexity_evidence")
+
+    soft_reasons = {"identity_unconfirmed", "identity_conflict", "insufficient_complexity_evidence"}
+    hard_failures = [r for r in reasons if r not in soft_reasons]
     if hard_failures:
         state = "invalid"
     elif needs_review:

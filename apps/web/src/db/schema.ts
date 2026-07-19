@@ -130,6 +130,9 @@ export const businesses = pgTable(
     validationStatus: text("validation_status").notNull().default("pending_validation"),
     validationReasons: jsonb("validation_reasons").notNull().default([]),
     validationChecks: jsonb("validation_checks").notNull().default({}),
+    // Operator override of a failed validation; the automated result above is
+    // preserved untouched, the audit lives in validation_overrides.
+    validationOverridden: boolean("validation_overridden").notNull().default(false),
     status: text("status").notNull().default("unresearched"),
     score: integer("score"),
     lastActionAt: timestamp("last_action_at", { withTimezone: true }),
@@ -333,6 +336,8 @@ export const qualificationEvidence = pgTable(
     evidence: text("evidence"),
     sourceUrl: text("source_url"),
     confidence: text("confidence"),
+    category: text("category"),
+    method: text("method"),
     createdAt: createdAt(),
   },
   (t) => [index("qualification_evidence_run_idx").on(t.runId)],
@@ -539,6 +544,23 @@ export const importJobs = pgTable("import_jobs", {
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+// Audit trail for manual validation overrides (never deleted).
+export const validationOverrides = pgTable(
+  "validation_overrides",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    previousStatus: text("previous_status").notNull(),
+    failedGates: jsonb("failed_gates").notNull().default([]),
+    reason: text("reason").notNull(),
+    overriddenBy: text("overridden_by").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("validation_overrides_business_idx").on(t.businessId)],
+);
 
 export const workerHeartbeats = pgTable("worker_heartbeats", {
   id: text("id").primaryKey(),

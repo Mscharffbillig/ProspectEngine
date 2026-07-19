@@ -97,9 +97,13 @@ class Fetcher:
                 error=f"skipped non-HTML content-type {content_type}",
             )
         body = response.content[: settings.crawl_max_response_bytes]
-        return _parse_html(
+        page = _parse_html(
             url, response.status_code, body.decode(response.encoding or "utf-8", errors="replace")
         )
+        final_url = str(response.url)
+        if final_url != url:
+            page.meta["final_url"] = final_url  # redirect target, for audit flags
+        return page
 
     def close(self) -> None:
         self._client.close()

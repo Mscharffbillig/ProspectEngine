@@ -149,6 +149,9 @@ _KEYWORD_CHECKS: list[tuple[str, list[tuple[str, str]], str]] = [
     (
         "emergency_service",
         [
+            (r"\b24/7 emergency\b", "high"),
+            (r"\bemergency dispatch\b", "high"),
+            (r"\bafter[- ]hours (?:emergency|dispatch|service calls?)\b", "high"),
             (r"\b24/7\b", "medium"),
             (r"\bemergency service\b", "medium"),
             (r"\bafter[- ]hours\b", "medium"),
@@ -238,14 +241,19 @@ def extract_from_page(url: str, text: str) -> list[Fact]:
     )
     if service_area:
         area = service_area.group(1).strip()
-        # A generic phrase ("serving the area") is low confidence; multiple
-        # named places are needed before this can support a scoring signal.
+        # A generic phrase ("serving the area") is low confidence; 3+ named
+        # places indicate a real territory; a very long city list is usually
+        # keyword-stuffed SEO copy, not an operating territory.
         place_count = len([p for p in re.split(r",|\band\b", area) if p.strip()])
+        if place_count >= 3:
+            area_confidence = "high" if place_count <= 12 else "medium"
+        else:
+            area_confidence = "low"
         facts.append(
             Fact(
                 "service_area",
                 area,
-                "high" if place_count >= 3 else "low",
+                area_confidence,
                 url,
                 _excerpt(text, service_area.start()),
             )

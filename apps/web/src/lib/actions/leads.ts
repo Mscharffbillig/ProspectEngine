@@ -3,8 +3,8 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { businesses, followUpTasks, researchTasks } from "@/db/schema";
-import { requireUser } from "@/lib/auth/server";
+import { businesses, followUpTasks, researchTasks, validationOverrides } from "@/db/schema";
+import { currentUser, requireUser } from "@/lib/auth/server";
 
 function revalidateLeadPages(businessId: string) {
   revalidatePath("/review");
@@ -15,6 +15,18 @@ function revalidateLeadPages(businessId: string) {
 
 export async function approveLead(businessId: string): Promise<void> {
   await requireUser();
+  // Standard approval is only for validation-passing leads; anything else
+  // must go through overrideValidation (audited).
+  const business = await db().query.businesses.findFirst({
+    where: eq(businesses.id, businessId),
+    columns: { validationStatus: true, validationOverridden: true },
+  });
+  if (!business) throw new Error("Business not found");
+  if (business.validationStatus !== "valid" && !business.validationOverridden) {
+    throw new Error(
+      `Validation is ${business.validationStatus.replaceAll("_", " ")} — use “Override validation” with a reason instead.`,
+    );
+  }
   await db()
     .update(businesses)
     .set({ status: "approved", lastActionAt: new Date() })
@@ -24,6 +36,39 @@ export async function approveLead(businessId: string): Promise<void> {
     taskType: "generate_outreach_draft",
     businessId,
   });
+  revalidateLeadPages(businessId);
+}
+
+/**
+ * Audited manual override of a failed/ambiguous validation. Preserves the
+ * automated result; records who, when, why, and which gates had failed.
+ */
+export async function overrideValidation(businessId: string, reason: string): Promise<void> {
+  await requireUser();
+  const trimmed = reason.trim();
+  if (trimmed.length < 5) {
+    throw new Error("An override reason is required (at least 5 characters).");
+  }
+  const business = await db().query.businesses.findFirst({
+    where: eq(businesses.id, businessId),
+    columns: { validationStatus: true, validationReasons: true },
+  });
+  if (!business) throw new Error("Business not found");
+  if (business.validationStatus === "valid") {
+    throw new Error("Validation already passes — use the normal Approve action.");
+  }
+  const user = await currentUser();
+  await db().insert(validationOverrides).values({
+    businessId,
+    previousStatus: business.validationStatus,
+    failedGates: business.validationReasons ?? [],
+    reason: trimmed,
+    overriddenBy: user?.email ?? "local-operator",
+  });
+  await db()
+    .update(businesses)
+    .set({ validationOverridden: true, lastActionAt: new Date() })
+    .where(eq(businesses.id, businessId));
   revalidateLeadPages(businessId);
 }
 

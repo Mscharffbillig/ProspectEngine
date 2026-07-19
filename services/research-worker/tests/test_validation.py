@@ -1,7 +1,8 @@
 from worker.crawler import FetchedPage
 from worker.extraction import Fact
 from worker.identity import NameResolution
-from worker.validation import validate_business
+from worker.scoring import SignalEvidence
+from worker.validation import complexity_evidence, should_qualify, validate_business
 
 INDUSTRIES = ["Excavation", "HVAC"]
 LOCATIONS = ["Minnesota", "Western Wisconsin"]
@@ -99,6 +100,23 @@ class TestHardGates:
         assert result.state == "manual_review_required"
         assert "identity_unconfirmed" in result.reasons
 
+    def test_identity_conflict_blocks_qualification(self):
+        conflicted = NameResolution(
+            "Snow Removal in St. Cloud",
+            "low",
+            "search_title",
+            None,
+            "",
+            conflict=True,
+            conflict_detail="json_ld names 'BrightWeb Design Studio'",
+        )
+        result = validate_business(
+            [page(GOOD_TEXT)], [contact_fact()], conflicted, INDUSTRIES, LOCATIONS
+        )
+        assert result.state == "manual_review_required"
+        assert "identity_conflict" in result.reasons
+        assert "CONFLICT" in result.checks["identity"]["detail"]
+
     def test_franchise_is_hard_gated(self):
         facts = [
             contact_fact(),
@@ -113,3 +131,48 @@ class TestHardGates:
         result = validate_business([page(GOOD_TEXT)], facts, good_name(), INDUSTRIES, LOCATIONS)
         assert result.state == "invalid"
         assert "franchise_or_national_company" in result.reasons
+
+
+class TestComplexityRequirement:
+    def test_contactability_alone_is_not_complexity(self):
+        signals = {
+            "public_contact": SignalEvidence("(218) 555-0142", None, "confirmed"),
+            "independent_business": SignalEvidence("family-owned", None, "high"),
+            "quote_driven": SignalEvidence("free estimates", None, "medium"),
+        }
+        assert complexity_evidence(signals) is None
+
+    def test_high_confidence_crews_is_complexity(self):
+        signals = {"multiple_crews": SignalEvidence("three crews", None, "high")}
+        found = complexity_evidence(signals)
+        assert found is not None
+        assert found[0] == "multiple_crews"
+
+    def test_medium_confidence_does_not_count(self):
+        signals = {"multiple_crews": SignalEvidence("our crews", None, "medium")}
+        assert complexity_evidence(signals) is None
+
+    def test_named_ops_manager_is_complexity(self):
+        found = complexity_evidence({}, ops_manager_count=1)
+        assert found is not None
+        assert found[0] == "named_operations_role"
+
+    def test_eligibility_and_score_without_complexity_not_qualified(self):
+        # Regression: existence + contactability must not qualify a lead.
+        assert not should_qualify("valid", score=45, min_score=30, has_complexity=False)
+        assert should_qualify("valid", score=45, min_score=30, has_complexity=True)
+        assert not should_qualify("invalid", score=90, min_score=30, has_complexity=True)
+        assert not should_qualify("manual_review_required", 90, 30, True)
+
+    def test_missing_complexity_is_a_warning_not_invalid(self):
+        result = validate_business(
+            [page(GOOD_TEXT)],
+            [contact_fact()],
+            good_name(),
+            INDUSTRIES,
+            LOCATIONS,
+            signals={"public_contact": SignalEvidence("phone", None, "confirmed")},
+        )
+        assert result.state == "valid"
+        assert "insufficient_complexity_evidence" in result.reasons
+        assert result.checks["complexity"]["passed"] is False

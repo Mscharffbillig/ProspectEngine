@@ -10,10 +10,10 @@ from worker.drafting import DraftInput, build_characteristic, render_draft
 from worker.extraction import Fact
 from worker.handlers.research import _load_pages
 from worker.hypotheses import generate_hypotheses
-from worker.identity import NameResolution
+from worker.identity import resolve_company_name
 from worker.queue import Task
 from worker.scoring import SCORING_VERSION, Rule, derive_signals, score
-from worker.validation import validate_business
+from worker.validation import OPS_ROLE_TYPES, complexity_evidence, should_qualify, validate_business
 
 log = logging.getLogger(__name__)
 
@@ -58,9 +58,18 @@ def _signals_for_business(conn: psycopg.Connection, business_id: str | None):
     )
 
 
-def _run_validation(conn: psycopg.Connection, task: Task, facts: list[Fact]):
+def _ops_manager_count(conn: psycopg.Connection, business_id: str | None) -> int:
+    row = conn.execute(
+        """select count(*) as n from business_contacts
+           where business_id = %s and is_decision_maker and role_type = any(%s)""",
+        (business_id, list(OPS_ROLE_TYPES)),
+    ).fetchone()
+    return row["n"] if row else 0
+
+
+def _run_validation(conn: psycopg.Connection, task: Task, facts: list[Fact], signals):
     business = conn.execute(
-        "select name, name_confidence, name_source, state from businesses where id = %s",
+        "select name, name_confidence, domain, state from businesses where id = %s",
         (task.business_id,),
     ).fetchone()
     assert business is not None
@@ -83,14 +92,13 @@ def _run_validation(conn: psycopg.Connection, task: Task, facts: list[Fact]):
             ).fetchall()
         ]
 
-    name_resolution = NameResolution(
-        name=business["name"],
-        confidence=business["name_confidence"] or "low",
-        source=business["name_source"] or "search_title",
-        source_url=None,
-        evidence="",
-    )
+    # Re-derive the identity resolution (including conflict detection) from the
+    # same stored evidence the research step used.
     pages = _load_pages(conn, task.business_id)
+    name_resolution = resolve_company_name(pages, business["name"], domain=business["domain"])
+    if business["name_confidence"] == "manual":
+        name_resolution.conflict = False  # the operator has settled identity
+
     result = validate_business(
         pages,
         facts,
@@ -98,6 +106,8 @@ def _run_validation(conn: psycopg.Connection, task: Task, facts: list[Fact]):
         industries,
         locations,
         business_state=business["state"],
+        signals=signals,
+        ops_manager_count=_ops_manager_count(conn, task.business_id),
     )
     conn.execute(
         """update businesses set validation_status = %s, validation_reasons = %s,
@@ -109,7 +119,8 @@ def _run_validation(conn: psycopg.Connection, task: Task, facts: list[Fact]):
 
 def handle_score_business(conn: psycopg.Connection, task: Task) -> None:
     facts = _load_facts(conn, task.business_id)
-    validation = _run_validation(conn, task, facts)
+    signals = _signals_for_business(conn, task.business_id)
+    validation = _run_validation(conn, task, facts, signals)
 
     rules = [
         Rule(
@@ -123,7 +134,6 @@ def handle_score_business(conn: psycopg.Connection, task: Task) -> None:
         )
         for r in conn.execute("select * from qualification_rules").fetchall()
     ]
-    signals = _signals_for_business(conn, task.business_id)
     result = score(rules, signals)
 
     row = conn.execute(
@@ -136,8 +146,9 @@ def handle_score_business(conn: psycopg.Connection, task: Task) -> None:
     for applied in result.applied:
         conn.execute(
             """insert into qualification_evidence
-                 (run_id, rule_key, label, points, evidence, source_url, confidence)
-               values (%s, %s, %s, %s, %s, %s, %s)""",
+                 (run_id, rule_key, label, points, evidence, source_url, confidence,
+                  category, method)
+               values (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 run_id,
                 applied.rule_key,
@@ -146,6 +157,8 @@ def handle_score_business(conn: psycopg.Connection, task: Task) -> None:
                 applied.evidence,
                 applied.source_url,
                 applied.confidence,
+                applied.category,
+                applied.method,
             ),
         )
 
@@ -157,8 +170,11 @@ def handle_score_business(conn: psycopg.Connection, task: Task) -> None:
         if campaign:
             min_score = campaign["min_qualification_score"]
 
-    # Hard gates first: a score can never qualify a business that failed them.
-    if validation.state == "valid" and result.total >= min_score:
+    # Hard gates + score threshold + operational-complexity requirement.
+    has_complexity = (
+        complexity_evidence(signals, _ops_manager_count(conn, task.business_id)) is not None
+    )
+    if should_qualify(validation.state, result.total, min_score, has_complexity):
         status = "qualified"
     else:
         status = "needs_review"

@@ -54,12 +54,21 @@ docs/                     EC2 deployment guide
    navigation labels and generic words rejected. Decision-makers require
    high/confirmed confidence.
 7. Hard validation gates run before scoring (meaningful crawl, operating
-   business, industry match, geography match, identity confidence, not a
-   franchise); a business that fails a gate can never be marked qualified
-   regardless of score. A transparent rules engine (editable
-   `qualification_rules` table, scoring v2.0) then computes the score — each
-   rule requires a minimum evidence confidence, and contactability is
-   de-weighted so it cannot compensate for weak fit.
+   business, industry match, geography match, identity coherence — the
+   canonical name must agree with the domain/email identity or have
+   multi-source support — and not a franchise); a business that fails a gate
+   can never be marked qualified regardless of score. A transparent rules
+   engine (editable `qualification_rules` table, scoring v3.0) then computes
+   the score — each rule requires a minimum evidence confidence, and
+   contactability is de-weighted so it cannot compensate for weak fit.
+   Finally, qualification requires at least one high-confidence
+   **operational-complexity** signal (crews, coordinated hiring, multiple
+   territories, company-owned equipment, recurring/emergency operations, or a
+   named operations role); existence + contactability alone leaves a lead in
+   needs_review with an `insufficient_complexity_evidence` warning.
+   Leads failing validation show **Override validation** instead of Approve —
+   overriding requires a reason and is recorded in an audit table
+   (`validation_overrides`) with user, timestamp, and the failed gates.
 8. You review ranked leads (`/review`), approve/reject/snooze; approving queues a
    template outreach draft grounded only in saved evidence. Every scoring badge
    expands to show its confidence, excerpt, and source page; a validation panel

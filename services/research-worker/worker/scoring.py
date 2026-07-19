@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 from worker.extraction import Fact
 
-SCORING_VERSION = "2.0"
+SCORING_VERSION = "3.0"
 
 CONFIDENCE_RANK = {"confirmed": 4, "high": 3, "medium": 2, "low": 1, "unknown": 0}
 
@@ -24,6 +24,7 @@ class SignalEvidence:
     evidence: str
     source_url: str | None = None
     confidence: str = "medium"
+    method: str = "heuristic"
 
 
 @dataclass
@@ -45,6 +46,8 @@ class AppliedRule:
     evidence: str
     source_url: str | None
     confidence: str
+    category: str = "fit"
+    method: str = "heuristic"
 
 
 @dataclass
@@ -68,7 +71,7 @@ def _best_fact(facts: list[Fact], key: str, min_confidence: str = "low") -> Fact
 def _signal_from(fact: Fact | None) -> SignalEvidence | None:
     if fact is None:
         return None
-    return SignalEvidence(fact.excerpt, fact.source_url, fact.confidence)
+    return SignalEvidence(fact.excerpt, fact.source_url, fact.confidence, fact.method)
 
 
 def derive_signals(
@@ -165,6 +168,8 @@ def score(rules: list[Rule], signals: dict[str, SignalEvidence]) -> ScoreResult:
                 evidence=evidence.evidence,
                 source_url=evidence.source_url,
                 confidence=evidence.confidence,
+                category=rule.category,
+                method=evidence.method,
             )
         )
     return result

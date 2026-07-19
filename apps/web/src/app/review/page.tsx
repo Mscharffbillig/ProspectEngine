@@ -97,8 +97,25 @@ export default async function ReviewPage({
           const unverified = lead.contacts.find((c) => !c.isDecisionMaker && c.name);
           const contactMethod = decisionMaker?.email ?? lead.email ?? lead.phone ?? "contact form";
           const evidence = evidenceByBusiness.get(lead.id) ?? [];
+          const invalid = lead.validationStatus === "invalid" && !lead.validationOverridden;
+          const warnings = (lead.validationReasons ?? []) as string[];
+          const complexityChip = evidence.find((e) => e.points > 0 && e.category === "workflow");
           return (
-            <article key={lead.id} className="card space-y-3">
+            <article
+              key={lead.id}
+              className={`card space-y-3 ${invalid ? "border-red-200 opacity-90 dark:border-red-900" : ""}`}
+            >
+              {invalid && (
+                <div className="rounded bg-red-50 px-2 py-1 text-sm font-medium text-red-800 dark:bg-red-950 dark:text-red-300">
+                  Ineligible — score shown for reference
+                  {warnings.length > 0 && (
+                    <span className="font-normal">
+                      {" "}
+                      ({warnings.map((w) => w.replaceAll("_", " ")).join(", ")})
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <div className="flex items-center gap-2">
@@ -108,10 +125,21 @@ export default async function ReviewPage({
                     >
                       {lead.name}
                     </Link>
-                    <ScoreBadge score={lead.score} />
+                    {invalid ? (
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        score {lead.score ?? "—"}
+                      </span>
+                    ) : (
+                      <ScoreBadge score={lead.score} />
+                    )}
                     <StatusBadge status={lead.status} />
                     {lead.validationStatus !== "valid" && (
                       <ValidationBadge status={lead.validationStatus} />
+                    )}
+                    {lead.validationOverridden && (
+                      <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300">
+                        manually overridden
+                      </span>
                     )}
                   </div>
                   <div className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
@@ -122,22 +150,24 @@ export default async function ReviewPage({
                     ]
                       .filter(Boolean)
                       .join(" · ")}
-                    {lead.websiteUrl && (
-                      <>
-                        {" · "}
-                        <a
-                          href={lead.websiteUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 dark:text-blue-400 hover:underline"
-                        >
-                          {lead.domain ?? "website"}
-                        </a>
-                      </>
-                    )}
                   </div>
+                  {lead.websiteUrl && (
+                    <a
+                      href={lead.websiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-0.5 inline-block text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Open company website ({lead.domain ?? lead.websiteUrl}) ↗
+                    </a>
+                  )}
                 </div>
-                <LeadActions businessId={lead.id} />
+                <LeadActions
+                  businessId={lead.id}
+                  validationStatus={lead.validationStatus}
+                  validationOverridden={lead.validationOverridden}
+                  failedGates={warnings}
+                />
               </div>
 
               <div className="grid gap-3 text-sm sm:grid-cols-2">
@@ -158,6 +188,14 @@ export default async function ReviewPage({
                   <div className="text-gray-500 dark:text-gray-400">
                     Best contact: <span className="text-gray-900 dark:text-gray-100">{contactMethod}</span>
                   </div>
+                  {complexityChip && (
+                    <div className="text-gray-500 dark:text-gray-400">
+                      Strongest signal:{" "}
+                      <span className="text-gray-900 dark:text-gray-100">
+                        {complexityChip.label}
+                      </span>
+                    </div>
+                  )}
                   {lead.researchedAt && (
                     <div className="text-gray-500 dark:text-gray-400">
                       Researched: {lead.researchedAt.toLocaleDateString()}
@@ -166,7 +204,7 @@ export default async function ReviewPage({
                 </div>
                 <div className="flex flex-wrap content-start gap-1">
                   {evidence.map((e) => (
-                    <EvidenceChip key={e.id} evidence={e} />
+                    <EvidenceChip key={e.id} evidence={e} businessDomain={lead.domain} />
                   ))}
                 </div>
               </div>

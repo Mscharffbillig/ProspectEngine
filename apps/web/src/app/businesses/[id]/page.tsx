@@ -1,13 +1,38 @@
 import { asc, desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
-import { businesses, extractedFacts, outreachDrafts, qualificationRuns } from "@/db/schema";
+import {
+  businesses,
+  extractedFacts,
+  outreachDrafts,
+  qualificationRuns,
+  validationOverrides,
+} from "@/db/schema";
 import { ConfidenceBadge, ScoreBadge, StatusBadge } from "@/components/badges";
+import { EvidenceChip } from "@/components/evidence-chip";
 import { LeadActions } from "@/components/lead-actions";
-import { ValidationPanel } from "@/components/validation-panel";
+import { ValidationBadge, ValidationPanel } from "@/components/validation-panel";
 import { requestDraft, requestResearch, saveLeadNotes } from "@/lib/actions/leads";
 
 export const dynamic = "force-dynamic";
+
+// Important pages first in the crawled-pages list.
+const PAGE_PRIORITY = ["", "about", "team", "leadership", "staff", "services", "contact", "careers"];
+
+function pagePriority(url: string): number {
+  const path = (() => {
+    try {
+      return new URL(url).pathname.toLowerCase();
+    } catch {
+      return url.toLowerCase();
+    }
+  })();
+  if (path === "/" || path === "") return 0;
+  for (let i = 1; i < PAGE_PRIORITY.length; i++) {
+    if (path.includes(PAGE_PRIORITY[i]!)) return i;
+  }
+  return PAGE_PRIORITY.length;
+}
 
 export default async function BusinessPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -17,16 +42,7 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
     with: {
       contacts: true,
       facts: { orderBy: asc(extractedFacts.factKey) },
-      pages: {
-        columns: {
-          id: true,
-          url: true,
-          title: true,
-          httpStatus: true,
-          fetchedAt: true,
-          crawlAllowed: true,
-        },
-      },
+      pages: true,
       qualificationRuns: {
         orderBy: desc(qualificationRuns.createdAt),
         limit: 1,
@@ -39,10 +55,26 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
   });
   if (!lead) notFound();
 
+  const overrides = await db().query.validationOverrides.findMany({
+    where: eq(validationOverrides.businessId, id),
+    orderBy: desc(validationOverrides.createdAt),
+  });
+
   const latestRun = lead.qualificationRuns[0] ?? null;
   const draftAction = requestDraft.bind(null, id);
   const researchAction = requestResearch.bind(null, id);
   const notesAction = saveLeadNotes.bind(null, id);
+
+  const sortedPages = [...lead.pages].sort((a, b) => pagePriority(a.url) - pagePriority(b.url));
+  const pageByUrl = new Map(lead.pages.map((p) => [p.url, p]));
+  const factsByPageUrl = new Map<string, typeof lead.facts>();
+  for (const fact of lead.facts) {
+    if (fact.sourceUrl) {
+      const list = factsByPageUrl.get(fact.sourceUrl) ?? [];
+      list.push(fact);
+      factsByPageUrl.set(fact.sourceUrl, list);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -50,6 +82,12 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
         <h1 className="text-xl font-semibold">{lead.name}</h1>
         <ScoreBadge score={lead.score} />
         <StatusBadge status={lead.status} />
+        {lead.validationStatus !== "valid" && <ValidationBadge status={lead.validationStatus} />}
+        {lead.validationOverridden && (
+          <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300">
+            manually overridden
+          </span>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -76,7 +114,12 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
           {lead.rejectionReason && <p>Rejection reason: {lead.rejectionReason}</p>}
           {lead.nextActionAt && <p>Next action: {lead.nextActionAt.toLocaleDateString()}</p>}
           <div className="pt-2">
-            <LeadActions businessId={id} />
+            <LeadActions
+              businessId={id}
+              validationStatus={lead.validationStatus}
+              validationOverridden={lead.validationOverridden}
+              failedGates={(lead.validationReasons ?? []) as string[]}
+            />
           </div>
           <div className="flex gap-2 pt-2">
             <form action={draftAction}>
@@ -95,21 +138,44 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
         <section className="card text-sm">
           <h2 className="mb-2 font-medium">Contacts</h2>
           {lead.contacts.length === 0 && <p className="text-gray-500 dark:text-gray-400">No contacts extracted.</p>}
+          {!lead.contacts.some((c) => c.isDecisionMaker && c.name) && lead.contacts.length > 0 && (
+            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+              Decision-maker not identified.
+            </p>
+          )}
           <ul className="space-y-2">
             {lead.contacts.map((c) => (
               <li key={c.id} className="border-b border-gray-100 dark:border-gray-800 pb-2 last:border-0">
                 <div className="font-medium">
                   {c.name ?? "(unnamed contact)"}
                   {c.role && <span className="font-normal text-gray-500 dark:text-gray-400"> — {c.role}</span>}
-                  {c.isDecisionMaker && (
+                  {c.isDecisionMaker ? (
                     <span className="ml-1 rounded bg-blue-50 px-1.5 text-xs text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                      decision-maker
+                      verified decision-maker
                     </span>
+                  ) : (
+                    c.name &&
+                    c.method === "auto" && (
+                      <span className="ml-1 rounded bg-yellow-50 px-1.5 text-xs text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400">
+                        unverified — not used for outreach
+                      </span>
+                    )
                   )}
-                  {c.name && !c.isDecisionMaker && c.method === "auto" && (
-                    <span className="ml-1 rounded bg-yellow-50 px-1.5 text-xs text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400">
-                      unverified{c.nameConfidence ? ` (${c.nameConfidence})` : ""}
-                    </span>
+                </div>
+                <div className="text-xs text-gray-400 dark:text-gray-500">
+                  confidence: {c.nameConfidence ?? "n/a"} · method: {c.method}
+                  {c.sourceUrl && (
+                    <>
+                      {" · "}
+                      <a
+                        href={c.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        Open source page
+                      </a>
+                    </>
                   )}
                 </div>
                 {c.email && (
@@ -130,6 +196,25 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
       <section className="card text-sm">
         <h2 className="mb-2 font-medium">Validation</h2>
         <ValidationPanel business={lead} />
+        {overrides.length > 0 && (
+          <div className="mt-2 border-t border-gray-100 pt-2 dark:border-gray-800">
+            <h3 className="mb-1 font-medium text-yellow-800 dark:text-yellow-300">
+              Manual overrides
+            </h3>
+            <ul className="space-y-1 text-xs">
+              {overrides.map((o) => (
+                <li key={o.id}>
+                  {o.createdAt.toLocaleString()} — {o.overriddenBy} overrode{" "}
+                  <strong>{o.previousStatus.replaceAll("_", " ")}</strong>
+                  {(o.failedGates as string[]).length > 0 && (
+                    <> (failed: {(o.failedGates as string[]).join(", ")})</>
+                  )}
+                  : “{o.reason}”
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
 
       <section className="card text-sm">
@@ -140,39 +225,28 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
         </h2>
         {!latestRun && <p className="text-gray-500 dark:text-gray-400">Not scored yet.</p>}
         {latestRun && (
-          <ul className="space-y-1">
-            {latestRun.evidence.map((e) => (
-              <li key={e.id} className="flex items-start gap-2">
-                <span
-                  className={`w-10 shrink-0 text-right font-mono ${
-                    e.points >= 0 ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"
-                  }`}
-                >
-                  {e.points >= 0 ? "+" : ""}
-                  {e.points}
-                </span>
-                <span>
-                  {e.label}
-                  {e.confidence && (
-                    <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">
-                      [{e.confidence}]
-                    </span>
-                  )}
-                  {e.evidence && <span className="text-gray-500 dark:text-gray-400"> — “{e.evidence}”</span>}{" "}
-                  {e.sourceUrl && (
-                    <a
-                      href={e.sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 dark:text-blue-400 hover:underline"
-                    >
-                      source
-                    </a>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div className="flex flex-wrap gap-1.5">
+            {latestRun.evidence.map((e) => {
+              const page = e.sourceUrl ? pageByUrl.get(e.sourceUrl) : null;
+              return (
+                <EvidenceChip
+                  key={e.id}
+                  evidence={e}
+                  businessDomain={lead.domain}
+                  pageInfo={
+                    page
+                      ? {
+                          httpStatus: page.httpStatus,
+                          fetchedAt: page.fetchedAt,
+                          finalUrl: (page.extractionMeta as { final_url?: string } | null)
+                            ?.final_url,
+                        }
+                      : null
+                  }
+                />
+              );
+            })}
+          </div>
         )}
       </section>
 
@@ -232,25 +306,59 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="card text-sm">
-          <h2 className="mb-2 font-medium">Website pages crawled</h2>
+          <h2 className="mb-2 font-medium">Crawled pages ({sortedPages.length})</h2>
+          {sortedPages.length === 0 && (
+            <p className="text-gray-500 dark:text-gray-400">No pages stored.</p>
+          )}
           <ul className="space-y-1">
-            {lead.pages.map((p) => (
-              <li key={p.id}>
-                <a
-                  href={p.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  {p.title ?? p.url}
-                </a>{" "}
-                <span className="text-xs text-gray-400 dark:text-gray-500">
-                  ({p.httpStatus}, {p.fetchedAt.toLocaleDateString()}
-                  {p.crawlAllowed ? "" : ", robots disallowed"})
-                </span>
-              </li>
-            ))}
-            {lead.pages.length === 0 && <li className="text-gray-500 dark:text-gray-400">No pages stored.</li>}
+            {sortedPages.map((p) => {
+              const meta = (p.extractionMeta ?? {}) as { final_url?: string; error?: string };
+              const pageFacts = factsByPageUrl.get(p.url) ?? [];
+              return (
+                <li key={p.id}>
+                  <details>
+                    <summary className="cursor-pointer">
+                      {p.title ?? p.url}{" "}
+                      <span
+                        className={`text-xs ${
+                          p.httpStatus !== null && p.httpStatus >= 400
+                            ? "text-red-600 dark:text-red-400"
+                            : "text-gray-400 dark:text-gray-500"
+                        }`}
+                      >
+                        (HTTP {p.httpStatus ?? "?"}, {p.fetchedAt.toLocaleDateString()}
+                        {p.crawlAllowed ? "" : ", robots disallowed"}
+                        {meta.final_url ? ", redirected" : ""})
+                      </span>
+                    </summary>
+                    <div className="ml-4 mt-1 space-y-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      <div className="break-all">URL: {p.url}</div>
+                      {meta.final_url && (
+                        <div className="break-all text-yellow-700 dark:text-yellow-400">
+                          Final URL after redirect: {meta.final_url}
+                        </div>
+                      )}
+                      {meta.error && (
+                        <div className="text-red-600 dark:text-red-400">Error: {meta.error}</div>
+                      )}
+                      <div>Content hash: {p.contentHash ?? "—"}</div>
+                      <div>
+                        Facts from this page ({pageFacts.length}):{" "}
+                        {pageFacts.map((f) => f.factKey).join(", ") || "none"}
+                      </div>
+                      <a
+                        href={p.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        Open page
+                      </a>
+                    </div>
+                  </details>
+                </li>
+              );
+            })}
           </ul>
           <h2 className="mb-2 mt-4 font-medium">Discovery sources</h2>
           <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-400">

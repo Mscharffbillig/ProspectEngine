@@ -22,8 +22,6 @@ GENERIC_EMAIL_PREFIXES = ("info@", "office@", "contact@", "hello@", "sales@", "a
 # (approved, contacted, replied, ...) are never clobbered by reprocessing.
 _AUTO_STATUSES = ("unresearched", "researching", "research_failed", "qualified", "needs_review")
 
-_NAME_RANK = {"manual": 5, "confirmed": 4, "high": 3, "medium": 2, "low": 1, None: 0}
-
 
 def handle_research_website(conn: psycopg.Connection, task: Task) -> None:
     business = conn.execute(
@@ -161,16 +159,25 @@ def handle_extract_facts(conn: psycopg.Connection, task: Task) -> None:
 def _resolve_identity(
     conn: psycopg.Connection, business_id: str | None, pages: list[FetchedPage]
 ) -> None:
-    """Resolve the canonical company name; never downgrade a better name."""
+    """Recompute the canonical company name from evidence.
+
+    Automated names are a pure function of the stored evidence, so they are
+    recomputed on every (re)extraction — the resolver itself guarantees that
+    malformed candidates are dropped, incoherent names need multi-source
+    agreement, and the provisional name survives otherwise. Manually edited
+    names are never touched.
+    """
     business = conn.execute(
-        "select name, name_confidence from businesses where id = %s", (business_id,)
+        "select name, name_confidence, domain from businesses where id = %s", (business_id,)
     ).fetchone()
     if business is None:
         return
-    resolution = resolve_company_name(pages, business["name"])
+    resolution = resolve_company_name(pages, business["name"], domain=business["domain"])
 
+    # Full audit trail: the chosen name plus every candidate considered.
     conn.execute(
-        "delete from extracted_facts where business_id = %s and fact_key = 'company_name'",
+        "delete from extracted_facts where business_id = %s "
+        "and fact_key in ('company_name', 'company_name_candidate', 'identity_conflict')",
         (business_id,),
     )
     conn.execute(
@@ -185,10 +192,33 @@ def _resolve_identity(
             f"[{resolution.source}] {resolution.evidence}"[:300],
         ),
     )
+    for candidate in resolution.candidates:
+        note = (
+            "malformed; rejected"
+            if candidate.malformed
+            else ("domain-coherent" if candidate.coherent else "not domain-coherent")
+        )
+        conn.execute(
+            """insert into extracted_facts
+                 (business_id, fact_key, value, confidence, source_url, excerpt, method)
+               values (%s, 'company_name_candidate', %s, %s, %s, %s, 'heuristic')""",
+            (
+                business_id,
+                candidate.name[:200],
+                candidate.confidence,
+                candidate.source_url,
+                f"[{candidate.source}; {note}] {candidate.evidence}"[:300],
+            ),
+        )
+    if resolution.conflict:
+        conn.execute(
+            """insert into extracted_facts
+                 (business_id, fact_key, value, confidence, source_url, excerpt, method)
+               values (%s, 'identity_conflict', %s, 'high', null, %s, 'heuristic')""",
+            (business_id, "unresolved identity conflict", resolution.conflict_detail[:300]),
+        )
 
-    current_rank = _NAME_RANK.get(business["name_confidence"], 0)
-    new_rank = _NAME_RANK.get(resolution.confidence, 0)
-    if new_rank > current_rank:
+    if business["name_confidence"] != "manual":
         conn.execute(
             """update businesses set name = %s, normalized_name = %s,
                name_confidence = %s, name_source = %s where id = %s""",
@@ -201,11 +231,12 @@ def _resolve_identity(
             ),
         )
         log.info(
-            "resolved name for %s: %r (%s via %s)",
+            "resolved name for %s: %r (%s via %s%s)",
             business_id,
             resolution.name,
             resolution.confidence,
             resolution.source,
+            "; CONFLICT" if resolution.conflict else "",
         )
 
 
