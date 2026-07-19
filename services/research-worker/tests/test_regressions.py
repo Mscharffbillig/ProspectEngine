@@ -97,6 +97,21 @@ class TestCanonicalNameRegression:
         assert result.confidence == "low"
         assert result.source == "search_title"
 
+    def test_error_page_title_never_becomes_name(self):
+        from worker.crawler import FetchedPage
+
+        error_page = FetchedPage(
+            url="https://blocked.example.com/",
+            title="403 Forbidden",
+            http_status=403,
+            text="403 Forbidden",
+            content_hash="x",
+        )
+        result = resolve_company_name([error_page], "Acme Grading | Hudson WI")
+        assert result.name == "Acme Grading"
+        assert result.source == "search_title"
+        assert result.confidence == "low"
+
     def test_demo_fixture_unaffected(self):
         pages = crawl("northstarexcavating.example.com")
         result = resolve_company_name(pages, "Northstar Excavating | Duluth MN")

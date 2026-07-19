@@ -61,6 +61,12 @@ _GENERIC_NAME_WORDS = {
     "welcome",
 }
 
+# Error/interstitial page titles must never become a business name.
+_ERROR_TITLE_RE = re.compile(
+    r"(?i)\b(?:40[034]|50[023]|forbidden|not found|access denied|error|"
+    r"just a moment|attention required|page unavailable)\b"
+)
+
 _FOOTER_LEGAL_RE = re.compile(
     r"(?:©|\(c\)|copyright)\s*(?:\d{4})?\s*"
     r"([A-Z][\w&'.,-]*(?:\s+[\w&'.,-]+){0,5}?(?:,?\s+(?:Inc|LLC|Co|Corp|Ltd)\.?)?)"
@@ -140,7 +146,7 @@ def resolve_company_name(pages: list[FetchedPage], fallback_title: str | None) -
                     name, "medium", "footer_legal", page.url, f"footer: {footer[:120]}"
                 )
 
-    if homepage is not None and homepage.title:
+    if homepage is not None and homepage.title and not _ERROR_TITLE_RE.search(homepage.title):
         cleaned = _clean_title(homepage.title)
         if cleaned and not is_generic_name(cleaned):
             return NameResolution(
