@@ -46,12 +46,26 @@ docs/                     EC2 deployment guide
    records are always retained.
 5. The crawler respects robots.txt, crawls at most 7 pages / depth 2 per site,
    stays on-domain, and applies per-domain delays.
-6. Extraction produces facts (each with value/confidence/source URL/excerpt/method);
-   a transparent rules engine (editable `qualification_rules` table) computes the
-   score and stores per-rule evidence.
-7. You review ranked leads (`/review`), approve/reject/snooze; approving queues a
-   template outreach draft grounded only in saved evidence.
-8. Marking a draft sent (after you copy it into your own email client) schedules
+6. Extraction produces facts (each with value/confidence/source URL/excerpt/method).
+   The canonical business name is resolved from ranked website evidence
+   (JSON-LD → og:site_name → header brand/logo → footer legal name → cleaned
+   title → search title as low-confidence fallback); people are extracted only
+   from JSON-LD, DOM team sections, or strict single-line text patterns, with
+   navigation labels and generic words rejected. Decision-makers require
+   high/confirmed confidence.
+7. Hard validation gates run before scoring (meaningful crawl, operating
+   business, industry match, geography match, identity confidence, not a
+   franchise); a business that fails a gate can never be marked qualified
+   regardless of score. A transparent rules engine (editable
+   `qualification_rules` table, scoring v2.0) then computes the score — each
+   rule requires a minimum evidence confidence, and contactability is
+   de-weighted so it cannot compensate for weak fit.
+8. You review ranked leads (`/review`), approve/reject/snooze; approving queues a
+   template outreach draft grounded only in saved evidence. Every scoring badge
+   expands to show its confidence, excerpt, and source page; a validation panel
+   shows gate outcomes; unverified person candidates are labeled and never used
+   for greetings.
+9. Marking a draft sent (after you copy it into your own email client) schedules
    follow-up reminders at 4 and 10 days; replies stop reminders; opt-outs go on a
    permanent suppression list that discovery also checks.
 
@@ -133,6 +147,24 @@ See `.env.example`. Highlights:
 | `AI_PROVIDER` / `ANTHROPIC_API_KEY` / `AI_MODEL` | Optional AI analysis (Phase 2) |
 | `CRAWLER_USER_AGENT` / `CRAWLER_CONTACT_EMAIL` | Crawler identity sent to websites |
 | `DEMO_MODE` | `true` = fixture search + fixture websites |
+
+## Reprocessing existing leads
+
+After extraction/scoring changes (or to refresh stale research), rerun the
+pipeline safely over everything already in the database:
+
+```bash
+cd services/research-worker
+.venv/Scripts/python -m worker.main reprocess
+```
+
+This recrawls each business website (refreshing pages and DOM metadata),
+replaces automated facts and contacts, re-resolves canonical names (a manual
+or higher-confidence name is never downgraded), re-runs validation and scoring
+under the current scoring version, and regenerates hypotheses for valid leads
+only. Manual edits, decisions, notes, and outreach history are preserved, and
+no duplicate business records are created. Do-not-contact businesses are
+skipped.
 
 ## Migrations
 

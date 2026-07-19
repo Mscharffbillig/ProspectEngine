@@ -56,12 +56,19 @@ class Hypothesis:
     source_url: str | None
 
 
+_MIN_CONFIDENCE = {"confirmed", "high"}
+
+
 def generate_hypotheses(signals: dict[str, SignalEvidence], limit: int = 3) -> list[Hypothesis]:
-    """Pick up to `limit` question hypotheses, in template priority order."""
+    """Question hypotheses backed by high-confidence signals only.
+
+    No filler: a business with one supported signal gets one question; a
+    business with none gets none (and stays in manual review).
+    """
     out: list[Hypothesis] = []
     for signal_key, question in _TEMPLATES:
         evidence = signals.get(signal_key)
-        if evidence is None:
+        if evidence is None or evidence.confidence not in _MIN_CONFIDENCE:
             continue
         out.append(Hypothesis(signal_key, question, evidence.evidence, evidence.source_url))
         if len(out) >= limit:

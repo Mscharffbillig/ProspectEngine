@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { businesses, extractedFacts, outreachDrafts, qualificationRuns } from "@/db/schema";
 import { ConfidenceBadge, ScoreBadge, StatusBadge } from "@/components/badges";
 import { LeadActions } from "@/components/lead-actions";
+import { ValidationPanel } from "@/components/validation-panel";
 import { requestDraft, requestResearch, saveLeadNotes } from "@/lib/actions/leads";
 
 export const dynamic = "force-dynamic";
@@ -105,6 +106,11 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
                       decision-maker
                     </span>
                   )}
+                  {c.name && !c.isDecisionMaker && c.method === "auto" && (
+                    <span className="ml-1 rounded bg-yellow-50 px-1.5 text-xs text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400">
+                      unverified{c.nameConfidence ? ` (${c.nameConfidence})` : ""}
+                    </span>
+                  )}
                 </div>
                 {c.email && (
                   <div className="text-gray-600 dark:text-gray-400">
@@ -120,6 +126,11 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
           </ul>
         </section>
       </div>
+
+      <section className="card text-sm">
+        <h2 className="mb-2 font-medium">Validation</h2>
+        <ValidationPanel business={lead} />
+      </section>
 
       <section className="card text-sm">
         <h2 className="mb-2 font-medium">
@@ -142,6 +153,11 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
                 </span>
                 <span>
                   {e.label}
+                  {e.confidence && (
+                    <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">
+                      [{e.confidence}]
+                    </span>
+                  )}
                   {e.evidence && <span className="text-gray-500 dark:text-gray-400"> — “{e.evidence}”</span>}{" "}
                   {e.sourceUrl && (
                     <a

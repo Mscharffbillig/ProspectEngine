@@ -79,3 +79,39 @@ class TestDeriveSignals:
         signals = derive_signals([fact("software_named", "servicetitan")], page_count=5)
         assert "sophisticated_software" in signals
         assert "servicetitan" in signals["sophisticated_software"].evidence
+
+
+class TestConfidenceGating:
+    """Broad isolated keywords must not create strong scoring signals (v2.0)."""
+
+    def test_low_confidence_commercial_does_not_signal(self):
+        low = Fact("commercial_work", "x", "low", "https://a.com", "commercial")
+        signals = derive_signals([low], page_count=5)
+        assert "commercial_or_recurring" not in signals
+
+    def test_generic_service_area_does_not_signal(self):
+        low = Fact("service_area", "the area", "low", "https://a.com", "serving the area")
+        signals = derive_signals([low], page_count=5)
+        assert "multiple_service_areas" not in signals
+
+    def test_rule_min_confidence_blocks_medium_evidence(self):
+        rule = Rule("multiple_crews", "Crews", 15, "multiple_crews", min_confidence="high")
+        medium = {"multiple_crews": SignalEvidence("our crews", None, "medium")}
+        high = {"multiple_crews": SignalEvidence("three crews", None, "high")}
+        assert score([rule], medium).total == 0
+        assert score([rule], high).total == 15
+
+    def test_extraction_ignores_isolated_keywords(self):
+        from worker.extraction import extract_from_page
+
+        text = (
+            "Careers\nOur technicians\nCall or text us anytime\n"
+            "Fleet services for your vehicles\nServing the area"
+        )
+        facts = extract_from_page("https://a.com", text)
+        keys = {f.key for f in facts if f.confidence in ("high", "confirmed")}
+        assert "hiring" not in keys
+        assert "multiple_crews" not in keys
+        assert "manual_forms" not in keys
+        assert "equipment_heavy" not in keys
+        assert "multiple_service_areas" not in keys

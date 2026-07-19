@@ -70,6 +70,37 @@ def run_poll() -> None:
             time.sleep(10)
 
 
+def run_reprocess() -> None:
+    """Safely re-run the pipeline over existing businesses.
+
+    Recrawls every business that has a website (skipping do-not-contact),
+    which refreshes pages + DOM metadata, replaces automated facts and
+    contacts, re-resolves the canonical name (never downgrading manual or
+    higher-confidence names), re-validates, re-scores under the current
+    scoring version, and regenerates hypotheses for valid leads only.
+    Manual edits, decisions, notes, and outreach history are preserved;
+    no duplicate business records are created.
+    """
+    with db.connect() as conn:
+        rows = conn.execute(
+            """select id, campaign_id from businesses
+               where website_url is not null and status != 'do_not_contact'"""
+        ).fetchall()
+        for row in rows:
+            queue.enqueue(
+                conn,
+                "research_website",
+                campaign_id=str(row["campaign_id"]) if row["campaign_id"] else None,
+                business_id=str(row["id"]),
+            )
+        log.info("queued reprocessing for %d businesses; draining queue", len(rows))
+        db.heartbeat(conn, {"mode": "reprocess", "demo_mode": settings.demo_mode})
+        processed = 0
+        while process_one(conn):
+            processed += 1
+        log.info("reprocessing complete: %d task(s) processed", processed)
+
+
 def print_status() -> None:
     with db.connect() as conn:
         rows = conn.execute(
@@ -88,9 +119,16 @@ def main() -> None:
         stream=sys.stdout,
     )
     parser = argparse.ArgumentParser(description="Lead research worker")
-    parser.add_argument("mode", choices=["once", "poll", "status"], nargs="?", default="once")
+    parser.add_argument(
+        "mode", choices=["once", "poll", "status", "reprocess"], nargs="?", default="once"
+    )
     args = parser.parse_args()
-    {"once": run_once, "poll": run_poll, "status": print_status}[args.mode]()
+    {
+        "once": run_once,
+        "poll": run_poll,
+        "status": print_status,
+        "reprocess": run_reprocess,
+    }[args.mode]()
 
 
 if __name__ == "__main__":

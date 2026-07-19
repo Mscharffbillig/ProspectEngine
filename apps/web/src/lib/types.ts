@@ -43,6 +43,18 @@ export type OutreachDraft = typeof outreachDrafts.$inferSelect;
 export type FollowUpTask = typeof followUpTasks.$inferSelect;
 export type ResearchRun = typeof researchRuns.$inferSelect;
 
+export type ValidationCheck = { passed: boolean; detail: string };
+export type ValidationChecks = Record<string, ValidationCheck>;
+
+export const VALIDATION_CHECK_LABELS: Record<string, string> = {
+  crawl: "Meaningful content",
+  operating_business: "Operating business",
+  industry: "Industry match",
+  geography: "Geography match",
+  identity: "Business identity",
+  independent: "Independent (not franchise)",
+};
+
 export type RunStats = Partial<
   Record<
     "queries" | "raw_results" | "skipped_aggregators" | "new_businesses" | "merged",

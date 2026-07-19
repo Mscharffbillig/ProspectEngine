@@ -72,9 +72,13 @@ def handle_discover_candidates(conn: psycopg.Connection, task: Task) -> None:
                     continue  # same-domain result already handled this run
                 seen_domains.add(domain or "")
 
+                # Crawl from the domain root — a result deep-linking to
+                # /services/... must not define the company's identity.
                 candidate = Candidate(
                     name=_title_to_name(result.title),
-                    website_url=result.url,
+                    website_url=f"https://{domain}",
+                    name_confidence="low",
+                    name_source="search_title",
                     source_type="search_api",
                     query=result.query,
                     title=result.title,

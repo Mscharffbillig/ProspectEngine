@@ -57,11 +57,7 @@ class TestNorthstarExtraction:
         emails = [f.value for f in facts if f.key == "email"]
         assert "info@northstarexcavating.example.com" in emails
 
-    def test_owner_and_ops_manager_found(self):
-        facts = facts_for("northstarexcavating.example.com")
-        people = [f.value for f in facts if f.key == "person_role"]
-        assert any(p == "Dale Hendrickson|owner" for p in people)
-        assert any(p == "Erik Hendrickson|operations manager" for p in people)
+    # Person extraction is covered by tests/test_regressions.py (worker.people).
 
     def test_business_signals(self):
         found = keys(facts_for("northstarexcavating.example.com"))

@@ -6,6 +6,8 @@ import { db } from "@/db";
 import { businesses, qualificationRuns } from "@/db/schema";
 import { LeadActions } from "@/components/lead-actions";
 import { ScoreBadge, StatusBadge } from "@/components/badges";
+import { EvidenceChip } from "@/components/evidence-chip";
+import { ValidationBadge, ValidationPanel } from "@/components/validation-panel";
 import type { QualificationEvidence } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -90,9 +92,9 @@ export default async function ReviewPage({
 
       <div className="space-y-4">
         {leads.map((lead) => {
-          const decisionMaker =
-            lead.contacts.find((c) => c.isDecisionMaker && c.name) ??
-            lead.contacts.find((c) => c.name);
+          // Only validated (high/confirmed) people are shown as decision-makers.
+          const decisionMaker = lead.contacts.find((c) => c.isDecisionMaker && c.name);
+          const unverified = lead.contacts.find((c) => !c.isDecisionMaker && c.name);
           const contactMethod = decisionMaker?.email ?? lead.email ?? lead.phone ?? "contact form";
           const evidence = evidenceByBusiness.get(lead.id) ?? [];
           return (
@@ -108,6 +110,9 @@ export default async function ReviewPage({
                     </Link>
                     <ScoreBadge score={lead.score} />
                     <StatusBadge status={lead.status} />
+                    {lead.validationStatus !== "valid" && (
+                      <ValidationBadge status={lead.validationStatus} />
+                    )}
                   </div>
                   <div className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
                     {[
@@ -144,6 +149,11 @@ export default async function ReviewPage({
                         ? `${decisionMaker.name}${decisionMaker.role ? ` (${decisionMaker.role})` : ""}`
                         : "not identified"}
                     </span>
+                    {!decisionMaker && unverified?.name && (
+                      <span className="ml-1 text-xs text-yellow-700 dark:text-yellow-400">
+                        (unverified: {unverified.name})
+                      </span>
+                    )}
                   </div>
                   <div className="text-gray-500 dark:text-gray-400">
                     Best contact: <span className="text-gray-900 dark:text-gray-100">{contactMethod}</span>
@@ -156,19 +166,21 @@ export default async function ReviewPage({
                 </div>
                 <div className="flex flex-wrap content-start gap-1">
                   {evidence.map((e) => (
-                    <span
-                      key={e.id}
-                      title={e.evidence ?? undefined}
-                      className={`rounded-full px-2 py-0.5 text-xs ${
-                        e.points >= 0 ? "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300" : "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300"
-                      }`}
-                    >
-                      {e.points >= 0 ? "+" : ""}
-                      {e.points} {e.label}
-                    </span>
+                    <EvidenceChip key={e.id} evidence={e} />
                   ))}
                 </div>
               </div>
+
+              {lead.validationStatus !== "valid" && (
+                <details className="text-sm">
+                  <summary className="cursor-pointer text-gray-500 dark:text-gray-400">
+                    Validation details
+                  </summary>
+                  <div className="mt-1">
+                    <ValidationPanel business={lead} />
+                  </div>
+                </details>
+              )}
 
               {lead.hypotheses.length > 0 && (
                 <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700 dark:text-gray-300">

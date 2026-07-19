@@ -17,6 +17,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from worker.config import settings
+from worker.htmlmeta import extract_meta
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ class FetchedPage:
     crawl_allowed: bool = True
     error: str | None = None
     links: list[str] = field(default_factory=list)
+    meta: dict = field(default_factory=dict)  # see htmlmeta.extract_meta
 
 
 class Fetcher:
@@ -128,10 +130,15 @@ class FixtureFetcher:
 
 def _parse_html(url: str, status: int, html: str) -> FetchedPage:
     soup = BeautifulSoup(html, "html.parser")
+    meta = extract_meta(soup)  # before scripts are stripped (needs JSON-LD)
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
     title = soup.title.get_text(strip=True) if soup.title else None
-    text = re.sub(r"\n{3,}", "\n\n", soup.get_text(separator="\n", strip=True))
+    # One line per DOM text node: source-HTML line wraps inside a paragraph are
+    # collapsed to spaces, while tag boundaries stay as newlines. Strict
+    # person patterns rely on never matching across tag boundaries.
+    chunks = (re.sub(r"\s+", " ", s).strip() for s in soup.stripped_strings)
+    text = "\n".join(c for c in chunks if c)
     # Fragments never change the fetched document — strip them so /page and
     # /page#section are one URL.
     links = [urljoin(url, a["href"]).split("#")[0] for a in soup.find_all("a", href=True)]
@@ -143,6 +150,7 @@ def _parse_html(url: str, status: int, html: str) -> FetchedPage:
         text=text[:200_000],
         content_hash=hashlib.sha256(text.encode()).hexdigest()[:32],
         links=links,
+        meta=meta,
     )
 
 

@@ -123,6 +123,13 @@ export const businesses = pgTable(
     industry: text("industry"),
     summary: text("summary"),
     employeeEstimate: text("employee_estimate"),
+    // Canonical-name resolution ("manual" edits are never overwritten).
+    nameConfidence: text("name_confidence").default("low"),
+    nameSource: text("name_source"),
+    // Hard-gate validation outcome (separate from the numeric score).
+    validationStatus: text("validation_status").notNull().default("pending_validation"),
+    validationReasons: jsonb("validation_reasons").notNull().default([]),
+    validationChecks: jsonb("validation_checks").notNull().default({}),
     status: text("status").notNull().default("unresearched"),
     score: integer("score"),
     lastActionAt: timestamp("last_action_at", { withTimezone: true }),
@@ -137,6 +144,16 @@ export const businesses = pgTable(
   },
   (t) => [
     check("businesses_status_check", inList("status", BUSINESS_STATUSES)),
+    check(
+      "businesses_validation_status_check",
+      inList("validation_status", [
+        "pending_validation",
+        "valid",
+        "invalid",
+        "ambiguous",
+        "manual_review_required",
+      ]),
+    ),
     check(
       "businesses_rejection_reason_check",
       sql.raw(
@@ -198,6 +215,8 @@ export const businessContacts = pgTable(
     sourceUrl: text("source_url"),
     excerpt: text("excerpt"),
     isDecisionMaker: boolean("is_decision_maker").notNull().default(false),
+    method: text("method").notNull().default("auto"), // auto contacts are replaced on reprocess
+    nameConfidence: text("name_confidence"),
     notes: text("notes"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -313,6 +332,7 @@ export const qualificationEvidence = pgTable(
     points: integer("points").notNull(),
     evidence: text("evidence"),
     sourceUrl: text("source_url"),
+    confidence: text("confidence"),
     createdAt: createdAt(),
   },
   (t) => [index("qualification_evidence_run_idx").on(t.runId)],

@@ -32,6 +32,8 @@ class Candidate:
     address: str | None = None
     industry: str | None = None
     contact_name: str | None = None
+    name_confidence: str = "medium"  # csv imports carry real names; search titles are "low"
+    name_source: str = "import"
     # source record fields
     source_type: str = "search_api"
     source_ref: str | None = None
@@ -118,8 +120,9 @@ def upsert_candidate(
         row = conn.execute(
             """insert into businesses
                  (campaign_id, name, normalized_name, website_url, domain,
-                  phone, normalized_phone, email, address, city, state, industry)
-               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                  phone, normalized_phone, email, address, city, state, industry,
+                  name_confidence, name_source)
+               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                returning id""",
             (
                 campaign_id,
@@ -134,6 +137,8 @@ def upsert_candidate(
                 normalize_city(candidate.city) if candidate.city else None,
                 normalize_state(candidate.state) if candidate.state else None,
                 candidate.industry,
+                candidate.name_confidence,
+                candidate.name_source,
             ),
         ).fetchone()
         assert row is not None
@@ -161,8 +166,9 @@ def upsert_candidate(
 
     if candidate.contact_name:
         conn.execute(
-            """insert into business_contacts (business_id, name, email, email_source, email_confidence)
-               values (%s, %s, %s, %s, %s)""",
+            """insert into business_contacts
+                 (business_id, name, email, email_source, email_confidence, method, name_confidence)
+               values (%s, %s, %s, %s, %s, 'manual', 'medium')""",
             (
                 business_id,
                 candidate.contact_name,

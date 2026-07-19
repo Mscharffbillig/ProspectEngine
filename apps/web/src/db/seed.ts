@@ -7,20 +7,29 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import * as schema from "./schema";
 
-const RULES: { ruleKey: string; label: string; points: number }[] = [
-  { ruleKey: "identifiable_decision_maker", label: "Identifiable owner or operations manager", points: 10 },
-  { ruleKey: "multiple_crews", label: "Multiple employees or crews", points: 15 },
-  { ruleKey: "multiple_service_areas", label: "Multiple service areas or locations", points: 10 },
-  { ruleKey: "commercial_or_recurring", label: "Commercial or recurring work", points: 10 },
-  { ruleKey: "manual_forms", label: "Visible manual forms or disconnected processes", points: 10 },
-  { ruleKey: "hiring_coordination", label: "Hiring office, dispatch, or coordination staff", points: 10 },
-  { ruleKey: "public_contact", label: "Public contact method found", points: 10 },
-  { ruleKey: "independent_business", label: "Independent business", points: 10 },
-  { ruleKey: "equipment_heavy", label: "Equipment-heavy or coordination-heavy operation", points: 5 },
-  { ruleKey: "national_or_franchise", label: "National company or franchise", points: -25 },
-  { ruleKey: "solo_operator", label: "Likely solo operator", points: -15 },
-  { ruleKey: "no_web_presence", label: "No meaningful web presence", points: -5 },
-  { ruleKey: "sophisticated_software", label: "Clearly sophisticated integrated software operation", points: -10 },
+// min_confidence: evidence bar the signal must meet before the rule applies.
+// category: eligibility | fit | contactability | workflow (contactability is
+// deliberately cheap so it can't compensate for weak fit).
+const RULES: {
+  ruleKey: string;
+  label: string;
+  points: number;
+  category: string;
+  minConfidence: string;
+}[] = [
+  { ruleKey: "identifiable_decision_maker", label: "Identifiable owner or operations manager", points: 10, category: "fit", minConfidence: "high" },
+  { ruleKey: "multiple_crews", label: "Multiple employees or crews", points: 15, category: "workflow", minConfidence: "high" },
+  { ruleKey: "multiple_service_areas", label: "Multiple service areas or locations", points: 10, category: "workflow", minConfidence: "high" },
+  { ruleKey: "commercial_or_recurring", label: "Commercial or recurring work", points: 10, category: "fit", minConfidence: "high" },
+  { ruleKey: "manual_forms", label: "Visible manual forms or disconnected processes", points: 10, category: "workflow", minConfidence: "high" },
+  { ruleKey: "hiring_coordination", label: "Hiring office, dispatch, or coordination staff", points: 10, category: "workflow", minConfidence: "high" },
+  { ruleKey: "public_contact", label: "Public contact method found", points: 3, category: "contactability", minConfidence: "medium" },
+  { ruleKey: "independent_business", label: "Independent business", points: 10, category: "fit", minConfidence: "high" },
+  { ruleKey: "equipment_heavy", label: "Equipment-heavy or coordination-heavy operation", points: 5, category: "workflow", minConfidence: "high" },
+  { ruleKey: "national_or_franchise", label: "National company or franchise", points: -25, category: "eligibility", minConfidence: "medium" },
+  { ruleKey: "solo_operator", label: "Likely solo operator", points: -15, category: "eligibility", minConfidence: "medium" },
+  { ruleKey: "no_web_presence", label: "No meaningful web presence", points: -5, category: "eligibility", minConfidence: "medium" },
+  { ruleKey: "sophisticated_software", label: "Clearly sophisticated integrated software operation", points: -10, category: "eligibility", minConfidence: "medium" },
 ];
 
 // Fall back to the repo-root .env (shared with the Python worker).
@@ -41,7 +50,14 @@ async function main() {
 
   await db
     .insert(schema.qualificationRules)
-    .values(RULES.map((r) => ({ ...r, definition: { signal: r.ruleKey } })))
+    .values(
+      RULES.map(({ ruleKey, label, points, category, minConfidence }) => ({
+        ruleKey,
+        label,
+        points,
+        definition: { signal: ruleKey, category, min_confidence: minConfidence },
+      })),
+    )
     .onConflictDoNothing({ target: schema.qualificationRules.ruleKey });
 
   const existing = await db.query.campaigns.findFirst();

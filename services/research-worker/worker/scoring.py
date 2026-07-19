@@ -1,21 +1,29 @@
 """Transparent rules-engine scoring.
 
-Signals are derived from stored facts/contacts; rules (loaded from the
-qualification_rules table) map signal keys to points. Every applied rule
-records its evidence so the review UI can show exactly why a score exists.
+Signals are derived from stored facts/contacts, each carrying the confidence
+of its supporting evidence. Rules (loaded from the qualification_rules table)
+map signal keys to points and may demand a minimum evidence confidence via
+definition.min_confidence — major positive rules require "high". Missing
+evidence never produces a signal.
+
+v2.0: confidence gating, contextual-evidence extraction, decision-makers only
+from validated contacts, contactability de-weighted.
 """
 
 from dataclasses import dataclass, field
 
 from worker.extraction import Fact
 
-SCORING_VERSION = "1.0"
+SCORING_VERSION = "2.0"
+
+CONFIDENCE_RANK = {"confirmed": 4, "high": 3, "medium": 2, "low": 1, "unknown": 0}
 
 
 @dataclass
 class SignalEvidence:
     evidence: str
     source_url: str | None = None
+    confidence: str = "medium"
 
 
 @dataclass
@@ -25,6 +33,8 @@ class Rule:
     points: int
     signal: str
     active: bool = True
+    min_confidence: str = "medium"
+    category: str = "fit"  # eligibility | fit | contactability | workflow
 
 
 @dataclass
@@ -34,6 +44,7 @@ class AppliedRule:
     points: int
     evidence: str
     source_url: str | None
+    confidence: str
 
 
 @dataclass
@@ -43,6 +54,23 @@ class ScoreResult:
     version: str = SCORING_VERSION
 
 
+def _best_fact(facts: list[Fact], key: str, min_confidence: str = "low") -> Fact | None:
+    """Highest-confidence fact for a key, if it meets the bar."""
+    candidates = [f for f in facts if f.key == key]
+    if not candidates:
+        return None
+    best = max(candidates, key=lambda f: CONFIDENCE_RANK.get(f.confidence, 0))
+    if CONFIDENCE_RANK.get(best.confidence, 0) < CONFIDENCE_RANK[min_confidence]:
+        return None
+    return best
+
+
+def _signal_from(fact: Fact | None) -> SignalEvidence | None:
+    if fact is None:
+        return None
+    return SignalEvidence(fact.excerpt, fact.source_url, fact.confidence)
+
+
 def derive_signals(
     facts: list[Fact],
     contact_count: int = 0,
@@ -50,73 +78,68 @@ def derive_signals(
     page_count: int = 0,
 ) -> dict[str, SignalEvidence]:
     """Map extracted facts to the signal keys that scoring rules reference."""
-    by_key: dict[str, list[Fact]] = {}
-    for fact in facts:
-        by_key.setdefault(fact.key, []).append(fact)
-
-    def first(key: str) -> Fact | None:
-        items = by_key.get(key)
-        return items[0] if items else None
-
     signals: dict[str, SignalEvidence] = {}
 
-    if decision_maker_count > 0 or first("person_role"):
-        fact = first("person_role")
+    def put(key: str, evidence: SignalEvidence | None) -> None:
+        if evidence is not None:
+            signals[key] = evidence
+
+    # Decision-makers come only from validated contacts (worker.people gates
+    # them to high/confirmed confidence) — never from raw text facts.
+    if decision_maker_count > 0:
         signals["identifiable_decision_maker"] = SignalEvidence(
-            fact.excerpt if fact else f"{decision_maker_count} named decision-maker contact(s)",
-            fact.source_url if fact else None,
+            f"{decision_maker_count} validated decision-maker contact(s)", None, "high"
         )
 
-    if (fact := first("multiple_crews")) is not None:
-        signals["multiple_crews"] = SignalEvidence(fact.excerpt, fact.source_url)
+    put("multiple_crews", _signal_from(_best_fact(facts, "multiple_crews")))
 
-    area_fact = first("service_area") or first("multiple_locations")
-    if area_fact is not None:
-        signals["multiple_service_areas"] = SignalEvidence(area_fact.excerpt, area_fact.source_url)
+    area = _best_fact(facts, "service_area", min_confidence="high")
+    locations = _best_fact(facts, "multiple_locations", min_confidence="high")
+    put("multiple_service_areas", _signal_from(area or locations))
 
-    commercial = first("commercial_work") or first("recurring_service")
-    if commercial is not None:
-        signals["commercial_or_recurring"] = SignalEvidence(
-            commercial.excerpt, commercial.source_url
-        )
+    commercial = _best_fact(facts, "commercial_work", min_confidence="medium")
+    recurring = _best_fact(facts, "recurring_service", min_confidence="medium")
+    put("commercial_or_recurring", _signal_from(commercial or recurring))
 
-    if (fact := first("manual_forms")) is not None:
-        signals["manual_forms"] = SignalEvidence(fact.excerpt, fact.source_url)
+    put("manual_forms", _signal_from(_best_fact(facts, "manual_forms")))
+    put("hiring_coordination", _signal_from(_best_fact(facts, "hiring")))
 
-    if (fact := first("hiring")) is not None:
-        signals["hiring_coordination"] = SignalEvidence(fact.excerpt, fact.source_url)
-
-    contact = first("phone") or first("email") or first("contact_form")
+    contact = _best_fact(facts, "phone") or _best_fact(facts, "email")
     if contact is not None or contact_count > 0:
         signals["public_contact"] = SignalEvidence(
             contact.excerpt if contact else "contact record on file",
             contact.source_url if contact else None,
+            contact.confidence if contact else "medium",
         )
 
-    if first("franchise_signal") is not None:
-        fact = first("franchise_signal")
-        signals["national_or_franchise"] = SignalEvidence(fact.excerpt, fact.source_url)
-    elif (fact := first("independent_signal")) is not None:
-        signals["independent_business"] = SignalEvidence(fact.excerpt, fact.source_url)
+    franchise = _best_fact(facts, "franchise_signal")
+    if franchise is not None:
+        put("national_or_franchise", _signal_from(franchise))
+    else:
+        put("independent_business", _signal_from(_best_fact(facts, "independent_signal")))
 
-    if (fact := first("equipment_heavy")) is not None:
-        signals["equipment_heavy"] = SignalEvidence(fact.excerpt, fact.source_url)
+    put("equipment_heavy", _signal_from(_best_fact(facts, "equipment_heavy")))
 
-    if (fact := first("solo_operator_signal")) is not None and "multiple_crews" not in signals:
-        signals["solo_operator"] = SignalEvidence(fact.excerpt, fact.source_url)
+    solo = _best_fact(facts, "solo_operator_signal")
+    if solo is not None and "multiple_crews" not in signals:
+        put("solo_operator", _signal_from(solo))
 
     if page_count <= 1:
-        signals["no_web_presence"] = SignalEvidence(f"only {page_count} page(s) found")
+        signals["no_web_presence"] = SignalEvidence(
+            f"only {page_count} page(s) found", None, "high"
+        )
 
-    if (fact := first("software_named")) is not None:
+    software = _best_fact(facts, "software_named")
+    if software is not None:
         signals["sophisticated_software"] = SignalEvidence(
-            f"uses {fact.value}: {fact.excerpt}", fact.source_url
+            f"uses {software.value}: {software.excerpt}", software.source_url, software.confidence
         )
 
     # Signals that only feed pain hypotheses (no scoring rule references them).
     for extra_key in ("quote_driven", "emergency_service", "recurring_service"):
-        if (fact := first(extra_key)) is not None:
-            signals.setdefault(extra_key, SignalEvidence(fact.excerpt, fact.source_url))
+        fact = _best_fact(facts, extra_key)
+        if fact is not None:
+            signals.setdefault(extra_key, _signal_from(fact))  # type: ignore[arg-type]
 
     return signals
 
@@ -129,6 +152,10 @@ def score(rules: list[Rule], signals: dict[str, SignalEvidence]) -> ScoreResult:
         evidence = signals.get(rule.signal)
         if evidence is None:
             continue
+        if CONFIDENCE_RANK.get(evidence.confidence, 0) < CONFIDENCE_RANK.get(
+            rule.min_confidence, 2
+        ):
+            continue
         result.total += rule.points
         result.applied.append(
             AppliedRule(
@@ -137,6 +164,7 @@ def score(rules: list[Rule], signals: dict[str, SignalEvidence]) -> ScoreResult:
                 points=rule.points,
                 evidence=evidence.evidence,
                 source_url=evidence.source_url,
+                confidence=evidence.confidence,
             )
         )
     return result

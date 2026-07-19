@@ -15,6 +15,20 @@
       "when": 1784357804961,
       "tag": "0001_updated_at_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784437090370,
+      "tag": "0002_data_quality_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784437091542,
+      "tag": "0003_scoring_v2_rules",
+      "breakpoints": true
     }
   ]
 }
