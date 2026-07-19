@@ -19,7 +19,7 @@ export default async function CampaignsPage() {
       <div className="card p-0">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-200 text-left text-gray-500">
+            <tr className="border-b border-gray-200 dark:border-gray-800 text-left text-gray-500 dark:text-gray-400">
               <th className="p-3 font-normal">Name</th>
               <th className="p-3 font-normal">Status</th>
               <th className="p-3 font-normal">Min score</th>
@@ -28,7 +28,7 @@ export default async function CampaignsPage() {
           </thead>
           <tbody>
             {rows.map((c) => (
-              <tr key={c.id} className="border-b border-gray-100 last:border-0">
+              <tr key={c.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
                 <td className="p-3">
                   <Link href={`/campaigns/${c.id}`} className="font-medium hover:underline">
                     {c.name}
@@ -41,7 +41,7 @@ export default async function CampaignsPage() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={4} className="p-4 text-gray-500">
+                <td colSpan={4} className="p-4 text-gray-500 dark:text-gray-400">
                   No campaigns yet.
                 </td>
               </tr>

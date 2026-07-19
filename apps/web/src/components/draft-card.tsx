@@ -40,12 +40,12 @@ export function DraftCard({ draft, businessName }: Props) {
         <Link href={`/businesses/${draft.businessId}`} className="font-semibold hover:underline">
           {businessName}
         </Link>
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-gray-500 dark:text-gray-400">
           {draft.status} · {draft.method} · {new Date(draft.createdAt).toLocaleString()}
         </span>
       </div>
       {draft.subject && <div className="text-sm font-medium">Subject: {draft.subject}</div>}
-      <pre className="whitespace-pre-wrap rounded bg-gray-50 p-3 font-sans text-sm">
+      <pre className="whitespace-pre-wrap rounded bg-gray-50 dark:bg-gray-950 p-3 font-sans text-sm">
         {draft.body}
       </pre>
 
@@ -115,7 +115,7 @@ export function DraftCard({ draft, businessName }: Props) {
         </div>
       )}
       {error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
           {error}
         </p>
       )}

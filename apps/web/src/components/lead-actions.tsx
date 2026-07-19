@@ -79,7 +79,7 @@ export function LeadActions({ businessId }: { businessId: string }) {
         Snooze 7d
       </button>
       {error && (
-        <span role="alert" className="text-sm text-red-600">
+        <span role="alert" className="text-sm text-red-600 dark:text-red-400">
           {error}
         </span>
       )}

@@ -69,7 +69,7 @@ export function ImportForm({ campaigns }: { campaigns: CampaignOption[] }) {
   return (
     <div className="max-w-3xl space-y-4">
       <h1 className="text-xl font-semibold">CSV import</h1>
-      <p className="text-sm text-gray-500">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
         Supported columns: company_name (required), website, phone, city, state, industry,
         contact_name, email, source. The worker normalizes and deduplicates rows after import.
       </p>
@@ -102,12 +102,12 @@ export function ImportForm({ campaigns }: { campaigns: CampaignOption[] }) {
       </div>
 
       {parseError && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
           {parseError}
         </p>
       )}
       {unmapped.length > 0 && (
-        <p className="text-sm text-yellow-700">
+        <p className="text-sm text-yellow-700 dark:text-yellow-400">
           Ignored unrecognized columns: {unmapped.join(", ")}
         </p>
       )}
@@ -117,7 +117,7 @@ export function ImportForm({ campaigns }: { campaigns: CampaignOption[] }) {
           <div className="card overflow-x-auto p-0">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-gray-200 text-left text-gray-500">
+                <tr className="border-b border-gray-200 dark:border-gray-800 text-left text-gray-500 dark:text-gray-400">
                   {PREVIEW_COLUMNS.map((c) => (
                     <th key={c} className="p-2 font-normal">
                       {c}
@@ -127,7 +127,7 @@ export function ImportForm({ campaigns }: { campaigns: CampaignOption[] }) {
               </thead>
               <tbody>
                 {records.slice(0, 10).map((r, i) => (
-                  <tr key={i} className="border-b border-gray-100 last:border-0">
+                  <tr key={i} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
                     {PREVIEW_COLUMNS.map((c) => (
                       <td key={c} className="p-2">
                         {r[c] ?? ""}
@@ -143,25 +143,25 @@ export function ImportForm({ campaigns }: { campaigns: CampaignOption[] }) {
               {busy ? "Importing…" : `Import ${records.length} rows`}
             </button>
             {records.length > 10 && (
-              <span className="text-sm text-gray-500">Previewing first 10 rows.</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">Previewing first 10 rows.</span>
             )}
           </div>
         </>
       )}
 
       {result?.error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
           {result.error}
         </p>
       )}
       {result?.jobId && (
         <div className="card text-sm">
-          <p className="text-green-700">
+          <p className="text-green-700 dark:text-green-400">
             Queued {result.accepted} rows for import. The worker will normalize and deduplicate
             them shortly.
           </p>
           {result.rejected && result.rejected.length > 0 && (
-            <p className="mt-1 text-yellow-700">
+            <p className="mt-1 text-yellow-700 dark:text-yellow-400">
               {result.rejected.length} row(s) skipped:{" "}
               {result.rejected
                 .slice(0, 5)

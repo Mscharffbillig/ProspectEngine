@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useActionState } from "react";
 import type { Campaign } from "@/lib/types";
@@ -215,11 +215,11 @@ export function CampaignForm({ action, campaign, industries, locations, submitLa
       </label>
 
       {state && "error" in state && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
           {state.error}
         </p>
       )}
-      {state && "ok" in state && <p className="text-sm text-green-700">Saved.</p>}
+      {state && "ok" in state && <p className="text-sm text-green-700 dark:text-green-400">Saved.</p>}
 
       <button type="submit" disabled={pending} className="btn-primary">
         {pending ? "Saving…" : submitLabel}

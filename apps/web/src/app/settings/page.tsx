@@ -10,7 +10,7 @@ function Status({ configured, label }: { configured: boolean; label: string }) {
       <span>{label}</span>
       <span
         className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-          configured ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-500"
+          configured ? "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
         }`}
       >
         {configured ? "configured" : "not configured"}
@@ -51,7 +51,7 @@ export default async function SettingsPage() {
 
       <section className="card text-sm">
         <h2 className="mb-2 font-medium">Providers</h2>
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-gray-100 dark:divide-gray-800">
           <Status configured={neonConfigured} label="Neon Postgres (DATABASE_URL)" />
           <Status configured={neonAuthConfigured} label="Neon Auth (Stack)" />
           <Status configured={braveConfigured} label="Brave Search API" />
@@ -59,7 +59,7 @@ export default async function SettingsPage() {
           <Status configured={aiConfigured} label="AI provider (optional)" />
         </ul>
         {demoMode && (
-          <p className="mt-2 rounded bg-blue-50 p-2 text-blue-800">
+          <p className="mt-2 rounded bg-blue-50 p-2 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
             Demo mode is on: discovery and crawling use local fixtures instead of live APIs. Set
             DEMO_MODE=false with a Brave Search key for live discovery.
           </p>
@@ -69,9 +69,9 @@ export default async function SettingsPage() {
       <section className="card text-sm">
         <h2 className="mb-2 font-medium">Worker status</h2>
         {heartbeats.length === 0 && (
-          <p className="text-gray-500">
+          <p className="text-gray-500 dark:text-gray-400">
             No worker has checked in yet. Start it with{" "}
-            <code className="rounded bg-gray-100 px-1">python -m worker.main poll</code> in
+            <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">python -m worker.main poll</code> in
             services/research-worker.
           </p>
         )}
@@ -83,13 +83,13 @@ export default async function SettingsPage() {
               <li key={h.id} className="flex items-center justify-between">
                 <span>
                   {h.id}{" "}
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-gray-400 dark:text-gray-500">
                     (mode: {info.mode ?? "?"}, demo: {String(info.demo_mode ?? "?")})
                   </span>
                 </span>
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    alive ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+                    alive ? "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300" : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300"
                   }`}
                 >
                   {alive ? "online" : `last seen ${h.lastSeenAt.toLocaleString()}`}
@@ -102,7 +102,7 @@ export default async function SettingsPage() {
 
       <section className="card text-sm">
         <h2 className="mb-2 font-medium">Crawl settings</h2>
-        <p className="text-gray-600">
+        <p className="text-gray-600 dark:text-gray-400">
           Depth 2, max 7 pages per site, per-domain delay, robots.txt respected. Adjust via worker
           environment variables (CRAWLER_USER_AGENT, CRAWLER_CONTACT_EMAIL, crawl limits in
           services/research-worker/worker/config.py).
@@ -111,13 +111,13 @@ export default async function SettingsPage() {
 
       <section className="card text-sm">
         <h2 className="mb-2 font-medium">Scoring rules</h2>
-        <p className="mb-2 text-gray-500">
+        <p className="mb-2 text-gray-500 dark:text-gray-400">
           Edit points or disable rules directly in the qualification_rules table (Neon Console SQL
           editor or any Postgres client); changes apply to the next scoring run.
         </p>
         <table className="w-full">
           <thead>
-            <tr className="text-left text-gray-500">
+            <tr className="text-left text-gray-500 dark:text-gray-400">
               <th className="py-1 pr-3 font-normal">Rule</th>
               <th className="py-1 pr-3 font-normal">Points</th>
               <th className="py-1 font-normal">Active</th>
@@ -125,10 +125,10 @@ export default async function SettingsPage() {
           </thead>
           <tbody>
             {rules.map((r) => (
-              <tr key={r.id} className="border-t border-gray-100">
+              <tr key={r.id} className="border-t border-gray-100 dark:border-gray-800">
                 <td className="py-1.5 pr-3">{r.label}</td>
                 <td
-                  className={`py-1.5 pr-3 font-mono ${r.points >= 0 ? "text-green-700" : "text-red-700"}`}
+                  className={`py-1.5 pr-3 font-mono ${r.points >= 0 ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}
                 >
                   {r.points >= 0 ? "+" : ""}
                   {r.points}

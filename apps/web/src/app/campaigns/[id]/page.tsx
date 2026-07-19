@@ -56,7 +56,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           </button>
         </form>
       </div>
-      <p className="text-sm text-gray-500">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
         “Run discovery” queues a task; the research worker must be running to process it (see
         Settings for worker status).
       </p>
@@ -82,7 +82,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             })}
           </ul>
         ) : (
-          <p className="text-sm text-gray-500">No runs yet.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">No runs yet.</p>
         )}
       </section>
 
@@ -91,7 +91,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         <div className="card p-0">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 text-left text-gray-500">
+              <tr className="border-b border-gray-200 dark:border-gray-800 text-left text-gray-500 dark:text-gray-400">
                 <th className="p-2 font-normal">Name</th>
                 <th className="p-2 font-normal">Score</th>
                 <th className="p-2 font-normal">Status</th>
@@ -100,7 +100,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             </thead>
             <tbody>
               {leads.map((b) => (
-                <tr key={b.id} className="border-b border-gray-100 last:border-0">
+                <tr key={b.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
                   <td className="p-2">
                     <Link href={`/businesses/${b.id}`} className="hover:underline">
                       {b.name}
@@ -117,7 +117,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               ))}
               {leads.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-3 text-gray-500">
+                  <td colSpan={4} className="p-3 text-gray-500 dark:text-gray-400">
                     No businesses discovered yet.
                   </td>
                 </tr>

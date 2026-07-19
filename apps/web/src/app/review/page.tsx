@@ -72,7 +72,7 @@ export default async function ReviewPage({
               className={`rounded-full px-3 py-1 ${
                 (params.status ?? "") === value
                   ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-600 border border-gray-200"
+                  : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800"
               }`}
             >
               {label}
@@ -82,7 +82,7 @@ export default async function ReviewPage({
       </div>
 
       {leads.length === 0 && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
           Nothing to review. Run a campaign from the Campaigns page and make sure the worker is
           running.
         </p>
@@ -109,7 +109,7 @@ export default async function ReviewPage({
                     <ScoreBadge score={lead.score} />
                     <StatusBadge status={lead.status} />
                   </div>
-                  <div className="mt-0.5 text-sm text-gray-500">
+                  <div className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
                     {[
                       lead.industry,
                       [lead.city, lead.state].filter(Boolean).join(", "),
@@ -124,7 +124,7 @@ export default async function ReviewPage({
                           href={lead.websiteUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline"
+                          className="text-blue-600 dark:text-blue-400 hover:underline"
                         >
                           {lead.domain ?? "website"}
                         </a>
@@ -137,19 +137,19 @@ export default async function ReviewPage({
 
               <div className="grid gap-3 text-sm sm:grid-cols-2">
                 <div>
-                  <div className="text-gray-500">
+                  <div className="text-gray-500 dark:text-gray-400">
                     Likely decision-maker:{" "}
-                    <span className="text-gray-900">
+                    <span className="text-gray-900 dark:text-gray-100">
                       {decisionMaker?.name
                         ? `${decisionMaker.name}${decisionMaker.role ? ` (${decisionMaker.role})` : ""}`
                         : "not identified"}
                     </span>
                   </div>
-                  <div className="text-gray-500">
-                    Best contact: <span className="text-gray-900">{contactMethod}</span>
+                  <div className="text-gray-500 dark:text-gray-400">
+                    Best contact: <span className="text-gray-900 dark:text-gray-100">{contactMethod}</span>
                   </div>
                   {lead.researchedAt && (
-                    <div className="text-gray-500">
+                    <div className="text-gray-500 dark:text-gray-400">
                       Researched: {lead.researchedAt.toLocaleDateString()}
                     </div>
                   )}
@@ -160,7 +160,7 @@ export default async function ReviewPage({
                       key={e.id}
                       title={e.evidence ?? undefined}
                       className={`rounded-full px-2 py-0.5 text-xs ${
-                        e.points >= 0 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                        e.points >= 0 ? "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300" : "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300"
                       }`}
                     >
                       {e.points >= 0 ? "+" : ""}
@@ -171,7 +171,7 @@ export default async function ReviewPage({
               </div>
 
               {lead.hypotheses.length > 0 && (
-                <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
+                <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700 dark:text-gray-300">
                   {lead.hypotheses.slice(0, 3).map((h) => (
                     <li key={h.id}>{h.question}</li>
                   ))}

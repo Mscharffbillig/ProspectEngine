@@ -49,9 +49,9 @@ export default async function DashboardPage() {
       <h1 className="text-xl font-semibold">Dashboard</h1>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {stats.map(([label, value, href]) => (
-          <Link key={label} href={href} className="card hover:border-blue-300">
+          <Link key={label} href={href} className="card hover:border-blue-300 dark:hover:border-blue-700">
             <div className="text-2xl font-semibold">{value}</div>
-            <div className="text-sm text-gray-500">{label}</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">{label}</div>
           </Link>
         ))}
       </div>
@@ -61,7 +61,7 @@ export default async function DashboardPage() {
         {runs.length > 0 ? (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500">
+              <tr className="text-left text-gray-500 dark:text-gray-400">
                 <th className="py-1 pr-4 font-normal">Campaign</th>
                 <th className="py-1 pr-4 font-normal">Started</th>
                 <th className="py-1 pr-4 font-normal">Status</th>
@@ -72,11 +72,11 @@ export default async function DashboardPage() {
               {runs.map((run) => {
                 const s = (run.stats ?? {}) as RunStats;
                 return (
-                  <tr key={run.id} className="border-t border-gray-100">
+                  <tr key={run.id} className="border-t border-gray-100 dark:border-gray-800">
                     <td className="py-1.5 pr-4">{run.campaign?.name ?? "—"}</td>
                     <td className="py-1.5 pr-4">{run.startedAt.toLocaleString()}</td>
                     <td className="py-1.5 pr-4">{run.status}</td>
-                    <td className="py-1.5 text-gray-600">
+                    <td className="py-1.5 text-gray-600 dark:text-gray-400">
                       {run.error
                         ? run.error
                         : `${s.new_businesses ?? 0} new, ${s.merged ?? 0} merged, ${
@@ -89,13 +89,13 @@ export default async function DashboardPage() {
             </tbody>
           </table>
         ) : (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             No runs yet. Create a campaign and click “Run discovery”, then start the worker.
           </p>
         )}
       </section>
 
-      <p className="text-sm text-gray-500">{total} active businesses tracked across all campaigns.</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400">{total} active businesses tracked across all campaigns.</p>
     </div>
   );
 }

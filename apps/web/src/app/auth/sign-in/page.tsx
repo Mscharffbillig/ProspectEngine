@@ -53,7 +53,7 @@ export default function SignInPage() {
           />
         </div>
         {error && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
             {error}
           </p>
         )}
@@ -64,7 +64,7 @@ export default function SignInPage() {
       <button
         type="button"
         onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-        className="mt-3 text-sm text-blue-600 hover:underline"
+        className="mt-3 text-sm text-blue-600 dark:text-blue-400 hover:underline"
       >
         {mode === "signin" ? "Need an account? Sign up" : "Have an account? Sign in"}
       </button>

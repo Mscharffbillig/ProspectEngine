@@ -32,7 +32,7 @@ export default async function OutreachPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold">Outreach queue</h1>
-      <p className="text-sm text-gray-500">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
         Messages are never sent automatically. Copy a draft into your own email client, then mark it
         sent to start follow-up reminders (4 and 10 days).
       </p>
@@ -69,7 +69,7 @@ export default async function OutreachPage() {
       <section>
         <h2 className="mb-2 font-medium">Drafts awaiting review ({drafts.length})</h2>
         {drafts.length === 0 && (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             No drafts. Approve a lead in the review queue or use “Generate outreach draft” on a
             business page (the worker must be running).
           </p>

@@ -61,7 +61,7 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
                 href={lead.websiteUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 hover:underline"
+                className="text-blue-600 dark:text-blue-400 hover:underline"
               >
                 {lead.websiteUrl}
               </a>
@@ -93,28 +93,28 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
 
         <section className="card text-sm">
           <h2 className="mb-2 font-medium">Contacts</h2>
-          {lead.contacts.length === 0 && <p className="text-gray-500">No contacts extracted.</p>}
+          {lead.contacts.length === 0 && <p className="text-gray-500 dark:text-gray-400">No contacts extracted.</p>}
           <ul className="space-y-2">
             {lead.contacts.map((c) => (
-              <li key={c.id} className="border-b border-gray-100 pb-2 last:border-0">
+              <li key={c.id} className="border-b border-gray-100 dark:border-gray-800 pb-2 last:border-0">
                 <div className="font-medium">
                   {c.name ?? "(unnamed contact)"}
-                  {c.role && <span className="font-normal text-gray-500"> — {c.role}</span>}
+                  {c.role && <span className="font-normal text-gray-500 dark:text-gray-400"> — {c.role}</span>}
                   {c.isDecisionMaker && (
-                    <span className="ml-1 rounded bg-blue-50 px-1.5 text-xs text-blue-700">
+                    <span className="ml-1 rounded bg-blue-50 px-1.5 text-xs text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                       decision-maker
                     </span>
                   )}
                 </div>
                 {c.email && (
-                  <div className="text-gray-600">
+                  <div className="text-gray-600 dark:text-gray-400">
                     {c.email}{" "}
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
                       ({c.emailSource?.replaceAll("_", " ")}, {c.emailConfidence})
                     </span>
                   </div>
                 )}
-                {c.excerpt && <div className="text-xs text-gray-400">“{c.excerpt}”</div>}
+                {c.excerpt && <div className="text-xs text-gray-400 dark:text-gray-500">“{c.excerpt}”</div>}
               </li>
             ))}
           </ul>
@@ -127,14 +127,14 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
           {latestRun &&
             `— score ${latestRun.totalScore} (v${latestRun.scoringVersion}, ${latestRun.createdAt.toLocaleDateString()})`}
         </h2>
-        {!latestRun && <p className="text-gray-500">Not scored yet.</p>}
+        {!latestRun && <p className="text-gray-500 dark:text-gray-400">Not scored yet.</p>}
         {latestRun && (
           <ul className="space-y-1">
             {latestRun.evidence.map((e) => (
               <li key={e.id} className="flex items-start gap-2">
                 <span
                   className={`w-10 shrink-0 text-right font-mono ${
-                    e.points >= 0 ? "text-green-700" : "text-red-700"
+                    e.points >= 0 ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"
                   }`}
                 >
                   {e.points >= 0 ? "+" : ""}
@@ -142,13 +142,13 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
                 </span>
                 <span>
                   {e.label}
-                  {e.evidence && <span className="text-gray-500"> — “{e.evidence}”</span>}{" "}
+                  {e.evidence && <span className="text-gray-500 dark:text-gray-400"> — “{e.evidence}”</span>}{" "}
                   {e.sourceUrl && (
                     <a
                       href={e.sourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline"
+                      className="text-blue-600 dark:text-blue-400 hover:underline"
                     >
                       source
                     </a>
@@ -167,7 +167,7 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
             {lead.hypotheses.map((h) => (
               <li key={h.id}>
                 {h.question}
-                {h.evidence && <span className="text-gray-500"> (evidence: “{h.evidence}”)</span>}
+                {h.evidence && <span className="text-gray-500 dark:text-gray-400"> (evidence: “{h.evidence}”)</span>}
               </li>
             ))}
           </ul>
@@ -179,7 +179,7 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
         <div className="max-h-96 overflow-y-auto">
           <table className="w-full">
             <thead>
-              <tr className="text-left text-gray-500">
+              <tr className="text-left text-gray-500 dark:text-gray-400">
                 <th className="py-1 pr-3 font-normal">Fact</th>
                 <th className="py-1 pr-3 font-normal">Value</th>
                 <th className="py-1 pr-3 font-normal">Confidence</th>
@@ -188,20 +188,20 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
             </thead>
             <tbody>
               {lead.facts.map((f) => (
-                <tr key={f.id} className="border-t border-gray-100 align-top">
+                <tr key={f.id} className="border-t border-gray-100 dark:border-gray-800 align-top">
                   <td className="py-1.5 pr-3 font-mono text-xs">{f.factKey}</td>
                   <td className="py-1.5 pr-3">{f.value}</td>
                   <td className="py-1.5 pr-3">
                     <ConfidenceBadge confidence={f.confidence} />
                   </td>
-                  <td className="py-1.5 text-xs text-gray-500">
+                  <td className="py-1.5 text-xs text-gray-500 dark:text-gray-400">
                     {f.excerpt && <span>“{f.excerpt}” </span>}
                     {f.sourceUrl && (
                       <a
                         href={f.sourceUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
+                        className="text-blue-600 dark:text-blue-400 hover:underline"
                       >
                         source
                       </a>
@@ -224,20 +224,20 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
                   href={p.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline"
+                  className="text-blue-600 dark:text-blue-400 hover:underline"
                 >
                   {p.title ?? p.url}
                 </a>{" "}
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-gray-400 dark:text-gray-500">
                   ({p.httpStatus}, {p.fetchedAt.toLocaleDateString()}
                   {p.crawlAllowed ? "" : ", robots disallowed"})
                 </span>
               </li>
             ))}
-            {lead.pages.length === 0 && <li className="text-gray-500">No pages stored.</li>}
+            {lead.pages.length === 0 && <li className="text-gray-500 dark:text-gray-400">No pages stored.</li>}
           </ul>
           <h2 className="mb-2 mt-4 font-medium">Discovery sources</h2>
-          <ul className="space-y-1 text-xs text-gray-600">
+          <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
             {lead.sources.map((s) => (
               <li key={s.id}>
                 [{s.sourceType}] {s.query && <span>query: “{s.query}” </span>}
@@ -250,16 +250,16 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
         <section className="card text-sm">
           <h2 className="mb-2 font-medium">Outreach history</h2>
           {lead.drafts.length === 0 && (
-            <p className="text-gray-500">No drafts yet. Use “Generate outreach draft”.</p>
+            <p className="text-gray-500 dark:text-gray-400">No drafts yet. Use “Generate outreach draft”.</p>
           )}
           <ul className="space-y-2">
             {lead.drafts.map((d) => (
-              <li key={d.id} className="rounded border border-gray-100 p-2">
-                <div className="mb-1 text-xs text-gray-500">
+              <li key={d.id} className="rounded border border-gray-100 dark:border-gray-800 p-2">
+                <div className="mb-1 text-xs text-gray-500 dark:text-gray-400">
                   {d.status} · {d.method} · {d.createdAt.toLocaleString()}
                   {d.sentAt && ` · sent ${d.sentAt.toLocaleDateString()} via ${d.channel}`}
                 </div>
-                <pre className="whitespace-pre-wrap font-sans text-xs text-gray-700">{d.body}</pre>
+                <pre className="whitespace-pre-wrap font-sans text-xs text-gray-700 dark:text-gray-300">{d.body}</pre>
               </li>
             ))}
           </ul>
