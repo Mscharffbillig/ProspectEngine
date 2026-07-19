@@ -75,6 +75,10 @@ class TestMalformedNames:
         for bad in ("gerkeexcavat", "minnesotaplumb", "twincitieslandscap"):
             assert is_malformed_name(bad), bad
 
+    def test_hyphenated_lowercase_slug_rejected(self):
+        for bad in ("albiero-plumbing", "d-and-g-excavating", "acme-hvac-services"):
+            assert is_malformed_name(bad), bad
+
     def test_generic_and_cta_rejected(self):
         for bad in (
             "Commercial Excavation",

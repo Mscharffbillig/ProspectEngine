@@ -177,6 +177,8 @@ def is_malformed_name(name: str) -> bool:
         return True
     if is_generic_name(name):
         return True
+    if name == name.lower():
+        return True  # no capitalization at all: raw slug ("albiero-plumbing")
     # Single-token checks (hyphenated brands like Genz-Ryan count as two).
     tokens = name.replace("-", " ").split()
     if len(tokens) == 1:
