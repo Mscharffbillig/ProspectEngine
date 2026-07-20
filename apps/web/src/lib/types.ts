@@ -30,6 +30,43 @@ export const REJECTION_REASONS = [
   ["other", "Other"],
 ] as const;
 
+// Manual-correction inputs + allowed contact role types. Kept here (a plain
+// module) rather than in the "use server" actions file, since a "use server"
+// module can only expose async actions to client components — a value/const
+// exported from it is not usable on the client.
+export const CONTACT_ROLE_TYPES = [
+  "owner",
+  "founder",
+  "general_manager",
+  "operations_manager",
+  "office_manager",
+  "service_manager",
+  "project_manager",
+  "other",
+  "unknown",
+] as const;
+
+export interface ProfileInput {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  state: string;
+  industry: string;
+  summary: string;
+}
+
+export interface ContactInput {
+  id?: string;
+  name: string;
+  role: string;
+  roleType: string;
+  email: string;
+  phone: string;
+  isDecisionMaker: boolean;
+}
+
 export type Campaign = typeof campaigns.$inferSelect;
 export type Business = typeof businesses.$inferSelect;
 export type BusinessContact = typeof businessContacts.$inferSelect;

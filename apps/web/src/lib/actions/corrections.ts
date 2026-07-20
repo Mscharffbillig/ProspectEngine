@@ -6,19 +6,7 @@ import { db } from "@/db";
 import { businessContacts, businesses, researchTasks } from "@/db/schema";
 import { requireUser } from "@/lib/auth/server";
 import { normalizeCompanyName } from "@/lib/normalize";
-
-// Role types accepted by the business_contacts.role_type CHECK constraint.
-export const CONTACT_ROLE_TYPES = [
-  "owner",
-  "founder",
-  "general_manager",
-  "operations_manager",
-  "office_manager",
-  "service_manager",
-  "project_manager",
-  "other",
-  "unknown",
-] as const;
+import { CONTACT_ROLE_TYPES, type ContactInput, type ProfileInput } from "@/lib/types";
 
 function revalidate(businessId: string) {
   revalidatePath("/review");
@@ -37,17 +25,6 @@ async function enqueueRescore(businessId: string, campaignId: string | null) {
   await db()
     .insert(researchTasks)
     .values({ taskType: "score_business", businessId, campaignId });
-}
-
-export interface ProfileInput {
-  name: string;
-  phone: string;
-  email: string;
-  address: string;
-  city: string;
-  state: string;
-  industry: string;
-  summary: string;
 }
 
 /** Operator corrections to the core business fields, from their own research. */
@@ -87,16 +64,6 @@ export async function updateBusinessProfile(
   await db().update(businesses).set(update).where(eq(businesses.id, businessId));
   await enqueueRescore(businessId, existing.campaignId);
   revalidate(businessId);
-}
-
-export interface ContactInput {
-  id?: string;
-  name: string;
-  role: string;
-  roleType: string;
-  email: string;
-  phone: string;
-  isDecisionMaker: boolean;
 }
 
 /**

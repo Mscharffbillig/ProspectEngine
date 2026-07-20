@@ -1,14 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import {
-  CONTACT_ROLE_TYPES,
-  deleteContact,
-  saveContact,
-  updateBusinessProfile,
-  type ContactInput,
-  type ProfileInput,
-} from "@/lib/actions/corrections";
+import { deleteContact, saveContact, updateBusinessProfile } from "@/lib/actions/corrections";
+import { CONTACT_ROLE_TYPES, type ContactInput, type ProfileInput } from "@/lib/types";
 
 interface ContactRow {
   id: string;
