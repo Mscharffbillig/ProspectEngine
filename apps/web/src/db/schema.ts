@@ -498,6 +498,7 @@ export const researchTasks = pgTable(
         "generate_hypotheses",
         "generate_outreach_draft",
         "process_csv_import",
+        "enrich_lead",
       ]),
     ),
     check(
@@ -562,6 +563,161 @@ export const validationOverrides = pgTable(
   (t) => [index("validation_overrides_business_idx").on(t.businessId)],
 );
 
+// ── Phase 2A: on-demand shortlisted-lead enrichment ──────────────────
+// Enrichment never mutates Phase 1 data (facts, contacts, validation, score);
+// its findings live in their own tables and are shown as external candidates /
+// hypotheses until the operator confirms them.
+
+export const enrichmentRuns = pgTable(
+  "enrichment_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("running"),
+    contactReadiness: text("contact_readiness"),
+    force: boolean("force").notNull().default(false),
+    // Per-stage outcome: { public_research|hunter|ai: {status, error, ...} }.
+    stages: jsonb("stages").notNull().default({}),
+    // Evidence-grounded opportunity brief (structured JSON), null when the AI
+    // stage was unconfigured, skipped, or produced nothing supportable.
+    aiAnalysis: jsonb("ai_analysis"),
+    cacheHit: boolean("cache_hit").notNull().default(false),
+    error: text("error"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check(
+      "enrichment_runs_status_check",
+      inList("status", ["running", "completed", "partial", "failed", "skipped"]),
+    ),
+    check(
+      "enrichment_runs_readiness_check",
+      sql.raw(
+        "contact_readiness is null or contact_readiness in ('ready_direct', " +
+          "'ready_general', 'needs_contact_enrichment', 'needs_manual_verification', " +
+          "'not_contactable')",
+      ),
+    ),
+    index("enrichment_runs_business_idx").on(t.businessId),
+  ],
+);
+
+const VERIFICATION_STATES = ["confirmed", "likely", "unverified", "conflicting", "rejected"];
+
+export const externalEvidence = pgTable(
+  "external_evidence",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => enrichmentRuns.id, { onDelete: "cascade" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    query: text("query"),
+    title: text("title"),
+    url: text("url"),
+    domain: text("domain"),
+    snippet: text("snippet"),
+    evidenceType: text("evidence_type").notNull().default("search_result"),
+    confidence: text("confidence"),
+    verificationState: text("verification_state").notNull().default("unverified"),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("external_evidence_verification_check", inList("verification_state", VERIFICATION_STATES)),
+    index("external_evidence_run_idx").on(t.runId),
+    index("external_evidence_business_idx").on(t.businessId),
+  ],
+);
+
+export const externalContacts = pgTable(
+  "external_contacts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => enrichmentRuns.id, { onDelete: "cascade" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    name: text("name"),
+    role: text("role"),
+    roleType: text("role_type").notNull().default("unknown"),
+    companyAssociation: text("company_association"),
+    email: text("email"),
+    // How trustworthy the email is; never "confirmed" for a guessed pattern.
+    emailType: text("email_type"),
+    source: text("source").notNull(), // brave | page | hunter
+    provider: text("provider"),
+    sourceUrl: text("source_url"),
+    excerpt: text("excerpt"),
+    confidence: text("confidence"),
+    verificationState: text("verification_state").notNull().default("unverified"),
+    method: text("method").notNull().default("search"),
+    providerScore: integer("provider_score"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check(
+      "external_contacts_role_type_check",
+      inList("role_type", [
+        "owner",
+        "founder",
+        "general_manager",
+        "operations_manager",
+        "office_manager",
+        "service_manager",
+        "project_manager",
+        "registered_agent",
+        "other",
+        "unknown",
+      ]),
+    ),
+    check(
+      "external_contacts_verification_check",
+      inList("verification_state", VERIFICATION_STATES),
+    ),
+    check(
+      "external_contacts_email_type_check",
+      sql.raw(
+        "email_type is null or email_type in ('website_published', 'provider_verified', " +
+          "'provider_suggested', 'generic', 'pattern_unverified')",
+      ),
+    ),
+    index("external_contacts_run_idx").on(t.runId),
+    index("external_contacts_business_idx").on(t.businessId),
+  ],
+);
+
+export const providerUsage = pgTable(
+  "provider_usage",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => enrichmentRuns.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    operation: text("operation").notNull(),
+    requestCount: integer("request_count").notNull().default(0),
+    model: text("model"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    success: boolean("success").notNull().default(false),
+    error: text("error"),
+    cacheHit: boolean("cache_hit").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [index("provider_usage_run_idx").on(t.runId)],
+);
+
 export const workerHeartbeats = pgTable("worker_heartbeats", {
   id: text("id").primaryKey(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
@@ -600,6 +756,38 @@ export const businessesRelations = relations(businesses, ({ one, many }) => ({
   qualificationRuns: many(qualificationRuns),
   hypotheses: many(painHypotheses),
   drafts: many(outreachDrafts),
+  enrichmentRuns: many(enrichmentRuns),
+}));
+
+export const enrichmentRunsRelations = relations(enrichmentRuns, ({ one, many }) => ({
+  business: one(businesses, {
+    fields: [enrichmentRuns.businessId],
+    references: [businesses.id],
+  }),
+  evidence: many(externalEvidence),
+  contacts: many(externalContacts),
+  usage: many(providerUsage),
+}));
+
+export const externalEvidenceRelations = relations(externalEvidence, ({ one }) => ({
+  run: one(enrichmentRuns, {
+    fields: [externalEvidence.runId],
+    references: [enrichmentRuns.id],
+  }),
+}));
+
+export const externalContactsRelations = relations(externalContacts, ({ one }) => ({
+  run: one(enrichmentRuns, {
+    fields: [externalContacts.runId],
+    references: [enrichmentRuns.id],
+  }),
+}));
+
+export const providerUsageRelations = relations(providerUsage, ({ one }) => ({
+  run: one(enrichmentRuns, {
+    fields: [providerUsage.runId],
+    references: [enrichmentRuns.id],
+  }),
 }));
 
 export const businessSourcesRelations = relations(businessSources, ({ one }) => ({

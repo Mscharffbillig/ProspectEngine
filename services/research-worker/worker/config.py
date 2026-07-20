@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     crawl_timeout_seconds: float = 15.0
     crawl_max_response_bytes: int = 1_500_000
 
+    # Phase 2A enrichment: skip a fresh successful run inside this window
+    # (Force refresh bypasses it). Per-run provider caps live in worker.enrichment.
+    enrich_cache_days: int = 30
+
     @property
     def user_agent(self) -> str:
         if self.crawler_contact_email:

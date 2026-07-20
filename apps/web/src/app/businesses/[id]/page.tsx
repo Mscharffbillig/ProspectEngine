@@ -1,19 +1,23 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
 import {
   businesses,
+  enrichmentRuns,
   extractedFacts,
   outreachDrafts,
   qualificationRuns,
+  researchTasks,
   validationOverrides,
 } from "@/db/schema";
 import { ConfidenceBadge, ScoreBadge, StatusBadge } from "@/components/badges";
+import { EnrichmentSection } from "@/components/enrichment-section";
 import { EvidenceChip } from "@/components/evidence-chip";
 import { LeadActions } from "@/components/lead-actions";
 import { LeadCorrections } from "@/components/lead-corrections";
 import { ValidationBadge, ValidationPanel } from "@/components/validation-panel";
 import { requestDraft, requestResearch, saveLeadNotes } from "@/lib/actions/leads";
+import { isEnrichable } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +64,29 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
     where: eq(validationOverrides.businessId, id),
     orderBy: desc(validationOverrides.createdAt),
   });
+
+  // Latest enrichment run with real results (a cache-hit "skipped" run points at
+  // the prior completed one), plus any in-flight enrichment task.
+  const enrichmentRun = await db().query.enrichmentRuns.findFirst({
+    where: and(eq(enrichmentRuns.businessId, id), ne(enrichmentRuns.status, "skipped")),
+    orderBy: desc(enrichmentRuns.createdAt),
+    with: { evidence: true, contacts: true, usage: true },
+  });
+  const queuedEnrichment = await db().query.researchTasks.findFirst({
+    where: and(
+      eq(researchTasks.businessId, id),
+      eq(researchTasks.taskType, "enrich_lead"),
+      inArray(researchTasks.status, ["pending", "running"]),
+    ),
+    columns: { id: true },
+  });
+  const dmContact = lead.contacts.find(
+    (c) => c.isDecisionMaker && c.name && (c.email || c.phone),
+  );
+  const bestVerifiedContact = dmContact
+    ? `${dmContact.name}${dmContact.role ? ` (${dmContact.role})` : ""}` +
+      `${dmContact.email ? ` · ${dmContact.email}` : dmContact.phone ? ` · ${dmContact.phone}` : ""}`
+    : null;
 
   const latestRun = lead.qualificationRuns[0] ?? null;
   const draftAction = requestDraft.bind(null, id);
@@ -216,6 +243,17 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
           isDecisionMaker: c.isDecisionMaker,
           method: c.method,
         }))}
+      />
+
+      <EnrichmentSection
+        businessId={id}
+        enrichable={isEnrichable(lead.status, lead.validationStatus, lead.validationOverridden)}
+        bestVerifiedContact={bestVerifiedContact}
+        run={enrichmentRun ?? null}
+        evidence={enrichmentRun?.evidence ?? []}
+        contacts={enrichmentRun?.contacts ?? []}
+        usage={enrichmentRun?.usage ?? []}
+        taskQueued={Boolean(queuedEnrichment)}
       />
 
       <section className="card text-sm">

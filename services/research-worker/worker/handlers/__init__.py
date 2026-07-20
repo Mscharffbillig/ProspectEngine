@@ -5,6 +5,7 @@ from collections.abc import Callable
 import psycopg
 
 from worker.handlers.discovery import handle_discover_candidates, handle_process_csv_import
+from worker.handlers.enrich import handle_enrich_lead
 from worker.handlers.qualify import (
     handle_generate_hypotheses,
     handle_generate_outreach_draft,
@@ -21,4 +22,5 @@ HANDLERS: dict[str, Callable[[psycopg.Connection, Task], None]] = {
     "score_business": handle_score_business,
     "generate_hypotheses": handle_generate_hypotheses,
     "generate_outreach_draft": handle_generate_outreach_draft,
+    "enrich_lead": handle_enrich_lead,
 }

@@ -4,10 +4,14 @@ import type {
   businesses,
   BUSINESS_STATUSES,
   campaigns,
+  enrichmentRuns,
+  externalContacts,
+  externalEvidence,
   extractedFacts,
   followUpTasks,
   outreachDrafts,
   painHypotheses,
+  providerUsage,
   qualificationEvidence,
   qualificationRules,
   qualificationRuns,
@@ -90,6 +94,50 @@ export const VALIDATION_CHECK_LABELS: Record<string, string> = {
   geography: "Geography match",
   identity: "Business identity",
   independent: "Independent (not franchise)",
+};
+
+// ── Phase 2A enrichment ──────────────────────────────────────────────
+
+export type EnrichmentRun = typeof enrichmentRuns.$inferSelect;
+export type ExternalEvidence = typeof externalEvidence.$inferSelect;
+export type ExternalContact = typeof externalContacts.$inferSelect;
+export type ProviderUsage = typeof providerUsage.$inferSelect;
+
+/** Mirror of the worker's is_enrichable (minus the suppression-list check,
+ *  which the action performs with a separate query). */
+export function isEnrichable(
+  status: string,
+  validationStatus: string,
+  validationOverridden: boolean,
+): boolean {
+  if (status === "rejected" || status === "do_not_contact") return false;
+  if (validationStatus === "invalid" && !validationOverridden) return false;
+  if (validationOverridden || validationStatus === "valid") return true;
+  return ["qualified", "needs_review", "approved"].includes(status);
+}
+
+export const CONTACT_READINESS_LABELS: Record<string, string> = {
+  ready_direct: "Ready — verified decision-maker",
+  ready_general: "Ready — general channel",
+  needs_contact_enrichment: "Needs a contact path",
+  needs_manual_verification: "Needs manual verification",
+  not_contactable: "Not contactable",
+};
+
+export const VERIFICATION_LABELS: Record<string, string> = {
+  confirmed: "Confirmed",
+  likely: "Likely",
+  unverified: "Unverified",
+  conflicting: "Conflicting",
+  rejected: "Rejected",
+};
+
+export const EMAIL_TYPE_LABELS: Record<string, string> = {
+  website_published: "Website-published",
+  provider_verified: "Provider-verified",
+  provider_suggested: "Provider-suggested",
+  generic: "Generic mailbox",
+  pattern_unverified: "Pattern-guessed (unverified)",
 };
 
 export type RunStats = Partial<
