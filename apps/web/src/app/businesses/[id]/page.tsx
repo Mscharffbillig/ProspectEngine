@@ -11,6 +11,7 @@ import {
 import { ConfidenceBadge, ScoreBadge, StatusBadge } from "@/components/badges";
 import { EvidenceChip } from "@/components/evidence-chip";
 import { LeadActions } from "@/components/lead-actions";
+import { LeadCorrections } from "@/components/lead-corrections";
 import { ValidationBadge, ValidationPanel } from "@/components/validation-panel";
 import { requestDraft, requestResearch, saveLeadNotes } from "@/lib/actions/leads";
 
@@ -192,6 +193,30 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
           </ul>
         </section>
       </div>
+
+      <LeadCorrections
+        businessId={id}
+        profile={{
+          name: lead.name,
+          phone: lead.phone ?? "",
+          email: lead.email ?? "",
+          address: lead.address ?? "",
+          city: lead.city ?? "",
+          state: lead.state ?? "",
+          industry: lead.industry ?? "",
+          summary: lead.summary ?? "",
+        }}
+        contacts={lead.contacts.map((c) => ({
+          id: c.id,
+          name: c.name,
+          role: c.role,
+          roleType: c.roleType,
+          email: c.email,
+          phone: c.phone,
+          isDecisionMaker: c.isDecisionMaker,
+          method: c.method,
+        }))}
+      />
 
       <section className="card text-sm">
         <h2 className="mb-2 font-medium">Validation</h2>

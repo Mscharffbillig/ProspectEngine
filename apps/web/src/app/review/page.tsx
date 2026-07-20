@@ -81,6 +81,12 @@ export default async function ReviewPage({
             </Link>
           ))}
         </nav>
+        <a
+          href="/api/export"
+          className="ml-auto rounded-full border border-gray-200 bg-white px-3 py-1 text-sm text-gray-600 hover:text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+        >
+          Export all (CSV) ↓
+        </a>
       </div>
 
       {leads.length === 0 && (

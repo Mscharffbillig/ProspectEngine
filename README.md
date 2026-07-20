@@ -73,7 +73,12 @@ docs/                     EC2 deployment guide
    template outreach draft grounded only in saved evidence. Every scoring badge
    expands to show its confidence, excerpt, and source page; a validation panel
    shows gate outcomes; unverified person candidates are labeled and never used
-   for greetings.
+   for greetings. On a lead's detail page a **Corrections** panel lets you fix
+   what you found by visiting the site yourself — business fields and contacts
+   (including confirming a decision-maker for outreach). Corrections are marked
+   as operator-confirmed so re-research never overwrites them, and saving
+   re-runs validation + scoring in the worker. **Export all (CSV)** on the
+   review page downloads every lead with its key research fields.
 9. Marking a draft sent (after you copy it into your own email client) schedules
    follow-up reminders at 4 and 10 days; replies stop reminders; opt-outs go on a
    permanent suppression list that discovery also checks.
@@ -115,6 +120,19 @@ python -m venv .venv
 pip install -e ".[dev]"
 python -m worker.main poll    # or `once` to drain the queue and exit
 ```
+
+**The worker must be running for “Run discovery” to do anything** — clicking
+Run discovery only queues a task; the worker executes it. To run it
+automatically instead of keeping a terminal open (Windows):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File services/research-worker/install-worker-task.ps1
+```
+
+This installs a hidden launcher in your Startup folder (`run-worker.ps1`, guarded
+so it never double-starts) that polls forever at every logon. Remove it with
+`install-worker-task.ps1 -Uninstall`. On Linux/EC2, run `poll` under systemd
+(see the deployment guide).
 
 The web app falls back to the repo-root `.env` automatically (see
 `apps/web/next.config.ts` and `drizzle.config.ts`), so one env file serves the
@@ -259,5 +277,4 @@ web app.
    (grounded in stored facts, JSON-schema validated).
 4. Hunter enrichment adapter (only when key configured; never auto-send to
    pattern-guessed emails).
-5. CSV export of leads.
-6. Follow-up queue polish + rejection-pattern reporting (Phase 3).
+5. Follow-up queue polish + rejection-pattern reporting (Phase 3).
