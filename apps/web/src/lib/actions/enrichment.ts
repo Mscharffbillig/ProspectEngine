@@ -55,11 +55,14 @@ export async function enrichLead(businessId: string, force = false): Promise<voi
   }
 
   // maxAttempts=1: a failed enrichment must not silently re-run paid providers.
+  // priority=10: an operator-initiated on-demand task should not wait behind
+  // bulk background crawling (discovery/reprocess run at the default priority 0).
   await db().insert(researchTasks).values({
     taskType: "enrich_lead",
     businessId,
     payload: { force },
     maxAttempts: 1,
+    priority: 10,
   });
   revalidatePath(`/businesses/${businessId}`);
 }
